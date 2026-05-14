@@ -228,9 +228,11 @@ func _generate_random_puzzle() -> void:
 	_p1_ids = p1.duplicate()
 	_p2_ids = p2.duplicate()
 
-	# Locks sit at the last intermediate of each path; DL seals p2 at the first step.
+	# P1: L1 at last intermediate. P2: DL at index 1 (close to S), L2 at index 2,
+	# leaving positions 3..p2_n as plain nodes for the K2 branch.
+	# This way, traveling E→S on P2, the branch (K2) is encountered before L2.
 	var res1 := [p1_n]
-	var res2 := [1, p2_n]
+	var res2 := [1, 2]
 
 	var cycle_p1 := _add_path_cycle(p1, res1, -1.0)
 	var cycle_p2 := _add_path_cycle(p2, res2,  1.0)
@@ -239,7 +241,7 @@ func _generate_random_puzzle() -> void:
 
 	_set_node_kind(p1[p1_n],   GraphData.KIND_LOCK,     "L1")
 	_set_node_kind(p2[1],      GraphData.KIND_DEADLOCK, "DL")
-	_set_node_kind(p2[p2_n],   GraphData.KIND_LOCK,     "L2")
+	_set_node_kind(p2[2],      GraphData.KIND_LOCK,     "L2")
 
 	# K1: branch preferred, main-path fallback.
 	if cycle_p1.size() >= 3:
@@ -247,13 +249,13 @@ func _generate_random_puzzle() -> void:
 	else:
 		_set_node_kind(p1[randi_range(1, p1_n - 1)], GraphData.KIND_KEY, "K1")
 
-	# K2: branch preferred, main-path fallback (must be after DL, before L2).
+	# K2: branch preferred, main-path fallback (must be between L2 and E, i.e. indices 3..p2_n).
 	if cycle_p2.size() >= 3:
 		_set_node_kind(cycle_p2[1].id, GraphData.KIND_KEY, "K2")
 	else:
-		_set_node_kind(p2[randi_range(2, p2_n - 1)], GraphData.KIND_KEY, "K2")
+		_set_node_kind(p2[randi_range(3, p2_n)], GraphData.KIND_KEY, "K2")
 
-	_puzzle_hint = "P1: branch(K1) → L1   P2: L2 → branch(K2) → DL"
+	_puzzle_hint = "P1: branch(K1) → L1   P2: branch(K2) → L2 → DL"
 	hint_label.text = _puzzle_hint
 	hint_label.modulate = Color("888780")
 	_start_sim()

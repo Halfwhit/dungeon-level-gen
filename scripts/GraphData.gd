@@ -354,10 +354,9 @@ func validate_lock_key(two_paths: Dictionary) -> Dictionary:
 	var all_path_ids: Dictionary = {}
 	for id in two_paths.p1: all_path_ids[id] = true
 	for id in two_paths.p2: all_path_ids[id] = true
-	# p2 is stored E→S; reverse it for validation so K2 (on branch) precedes L2.
-	var p2_fwd: Array = two_paths.p2.duplicate(); p2_fwd.reverse()
+	# p2 is stored E→S (travel direction), so use it directly — branch(K2) precedes L2.
 	var k1_raw = _path_with_branch_kinds(two_paths.p1, all_path_ids)
-	var k2_raw = _path_with_branch_kinds(p2_fwd, all_path_ids)
+	var k2_raw = _path_with_branch_kinds(two_paths.p2, all_path_ids)
 	var total_deadlocks = (k1_raw + k2_raw).filter(func(k): return k == KIND_DEADLOCK).size()
 	# Replace deadlocks with empty so they don't affect key/lock balance.
 	var k1 = k1_raw.map(func(k): return "" if k == KIND_DEADLOCK else k)
