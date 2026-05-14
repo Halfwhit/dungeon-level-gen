@@ -108,34 +108,33 @@ func _fix_cycle_positions() -> void:
 		c1.pos = graph.snap_vec(Vector2(c1_x, anchor.pos.y + y_dir * 2.0 * gs))
 		c2.pos = graph.snap_vec(anchor.pos + Vector2(0.0, y_dir * 3.0 * gs))
 
-# Enforce left-to-right x-ordering for P1/P2 path nodes, and clamp each path's
-# y-positions so they stay within ±1 grid step of the path's first node, preventing
-# U-shaped dips. Also ensures P1 stays strictly above y=0 and P2 strictly below y=0.
+# Enforce left-to-right x-ordering for P1/P2 path nodes and pin every node on
+# each path to exactly the same y as the path's first intermediate node.
+# Pinning to a single y makes both paths perfectly horizontal, eliminating the
+# zigzag crossings that occur when consecutive nodes are at different y-levels.
+# Also ensures P1 stays strictly above y=0 and P2 strictly below y=0.
 func _enforce_path_x_order() -> void:
 	var gs: float = float(graph.grid_size)
 	var e_x: float = graph.nodes[1].pos.x if graph.nodes.size() > 1 else 9999.0
 
 	for pi in range(2):
 		var path: Array = _p1_ids if pi == 0 else _p2_ids
-		var above: bool = (pi == 0)  # P1 must stay above center (y < 0); P2 below (y > 0)
+		var above: bool = (pi == 0)
 
 		if path.size() < 2: continue
 
-		# Step 1: clamp every intermediate node to its correct side of center.
+		# Step 1: push every node to the correct side of y=0.
 		for i in range(1, path.size() - 1):
 			var n := graph.node_by_id(path[i])
 			if n == null: continue
 			if above and n.pos.y > -gs:    n.pos.y = -gs
 			elif not above and n.pos.y < gs: n.pos.y = gs
 
-		# Step 2: use the first intermediate node as the y-reference band.
+		# Step 2: use the first intermediate node as the canonical y for the whole path.
 		var ref_node := graph.node_by_id(path[1])
 		var ref_y: float = ref_node.pos.y if ref_node != null else (-gs if above else gs)
 
-		# y-band bounds honour the path's required side of y=0.
-		var y_lo: float = maxf(ref_y - gs, (-99999.0 if above else gs))
-		var y_hi: float = minf(ref_y + gs, (-gs if above else 99999.0))
-
+		# Step 3: pin all intermediates to exactly ref_y and enforce monotone x.
 		for _pass in range(10):
 			var changed := false
 			for i in range(1, path.size() - 1):
@@ -149,10 +148,9 @@ func _enforce_path_x_order() -> void:
 					n_cur.pos.x = clampf(min_x, 0.0, e_x - gs)
 					changed = true
 
-				# y: clamp within band while honouring the side constraint
-				var clamped_y: float = graph.snap(clampf(n_cur.pos.y, y_lo, y_hi))
-				if absf(clamped_y - n_cur.pos.y) > 0.1:
-					n_cur.pos.y = clamped_y; changed = true
+				# y: pin to exactly ref_y so the path stays horizontal
+				if absf(n_cur.pos.y - ref_y) > 0.1:
+					n_cur.pos.y = ref_y; changed = true
 
 			if not changed: break
 
