@@ -6,6 +6,8 @@ var sim_alpha: float = 1.0
 var _worker: Thread = null
 var _computing: bool = false
 var _puzzle_hint: String = ""
+var _p1_ids: Array = []   # node ID sequence for P1 (set before thread launch, read by thread)
+var _p2_ids: Array = []   # node ID sequence for P2
 
 @onready var hint_label: Label = $UI/Bottom/HintLabel
 @onready var stats_label: Label = $UI/Bottom/StatsLabel
@@ -76,9 +78,64 @@ func _compute_layout_threaded() -> void:
 	graph.reassign_all_sides()
 	graph.resolve_crossings()
 	graph.compact_layout()
+	graph.fix_stub_positions()      # anchor stubs directly above/below their path node
+	graph.compact_layout()          # re-compact: stub repositioning frees space for path nodes to drift back
+	_enforce_path_x_order()         # ensure P1 and P2 nodes stay in left-to-right x-order
+	graph.fix_stub_positions()      # re-anchor stubs after path nodes may have shifted
 	graph.reassign_all_sides()
 	graph.resolve_crossings()
 	graph.correct_backward_sides()  # flip any remaining backward exits where opposite is free
+
+# Enforce left-to-right x-ordering for P1/P2 path nodes, and clamp each path's
+# y-positions so they stay within ±1 grid step of the path's first node, preventing
+# U-shaped dips. Also ensures P1 stays strictly above y=0 and P2 strictly below y=0
+# (Godot 2D: positive y is downward, so negative y = above S/E on screen).
+func _enforce_path_x_order() -> void:
+	var gs: float = float(graph.grid_size)
+	var e_x: float = graph.nodes[1].pos.x if graph.nodes.size() > 1 else 9999.0
+
+	# Process each path with awareness of which side of y=0 it belongs on.
+	for pi in range(2):
+		var path: Array = _p1_ids if pi == 0 else _p2_ids
+		var above: bool = (pi == 0)  # P1 must stay above center (y < 0); P2 below (y > 0)
+
+		if path.size() < 2: continue
+
+		# Step 1: clamp every intermediate node to its correct side of center.
+		# compact_layout can pull path nodes across y=0.
+		for i in range(1, path.size() - 1):
+			var n := graph.node_by_id(path[i])
+			if n == null: continue
+			if above and n.pos.y > -gs:   n.pos.y = -gs
+			elif not above and n.pos.y < gs: n.pos.y = gs
+
+		# Step 2: use the first intermediate node as the y-reference band.
+		var ref_node := graph.node_by_id(path[1])
+		var ref_y: float = ref_node.pos.y if ref_node != null else (-gs if above else gs)
+
+		# y-band bounds honour the path's required side of y=0.
+		var y_lo: float = maxf(ref_y - gs, (-99999.0 if above else gs))
+		var y_hi: float = minf(ref_y + gs, (-gs if above else 99999.0))
+
+		for _pass in range(10):
+			var changed := false
+			for i in range(1, path.size() - 1):
+				var n_cur := graph.node_by_id(path[i])
+				var n_prev := graph.node_by_id(path[i - 1])
+				if n_cur == null or n_prev == null: continue
+
+				# x: must be at least 1 step right of predecessor
+				var min_x: float = graph.snap(n_prev.pos.x + gs)
+				if n_cur.pos.x < min_x:
+					n_cur.pos.x = clampf(min_x, 0.0, e_x - gs)
+					changed = true
+
+				# y: clamp within band while honouring the side constraint
+				var clamped_y: float = graph.snap(clampf(n_cur.pos.y, y_lo, y_hi))
+				if absf(clamped_y - n_cur.pos.y) > 0.1:
+					n_cur.pos.y = clamped_y; changed = true
+
+			if not changed: break
 
 func _reset_graph() -> void:
 	if _computing:
@@ -149,16 +206,16 @@ func _generate_random_puzzle() -> void:
 	for i in range(p1.size() - 1): graph.add_edge(p1[i], p1[i + 1])
 	for i in range(p2.size() - 1): graph.add_edge(p2[i], p2[i + 1])
 
+	# Store paths so the layout thread can enforce left-to-right x-ordering.
+	_p1_ids = p1.duplicate()
+	_p2_ids = p2.duplicate()
+
 	# Locks sit at the last intermediate of each path; DL seals p2 at the first step.
-	# Keys prefer to live in branch cycles (validate_lock_key now walks branches).
+	# Keys prefer to live in branch stubs (validate_lock_key now walks branches).
 	# If no branch can attach, fall back to a random main-path position before the lock.
 	var res1 := [p1_n]
 	var res2 := [1, p2_n]
 
-	# Attach a 3-node ring to each path; return cycle nodes for key placement.
-	# With MAX_EDGES=3, chain nodes have exactly 1 free edge, so the ring must not
-	# close back to the anchor. Instead: anchor→c0, then ring c0→c1→c2→c0.
-	# anchor: 2+1=3 edges ✓   c0: 3 edges ✓   c1,c2: 2 edges each ✓
 	var cycle_p1 := _add_path_cycle(p1, res1, -1.0)
 	var cycle_p2 := _add_path_cycle(p2, res2,  1.0)
 
@@ -169,13 +226,13 @@ func _generate_random_puzzle() -> void:
 	_set_node_kind(p2[p2_n],   GraphData.KIND_LOCK,     "L2")
 
 	# K1: branch preferred, main-path fallback.
-	if cycle_p1.size() >= 3:
+	if cycle_p1.size() >= 2:
 		_set_node_kind(cycle_p1[1].id, GraphData.KIND_KEY, "K1")
 	else:
 		_set_node_kind(p1[randi_range(1, p1_n - 1)], GraphData.KIND_KEY, "K1")
 
 	# K2: branch preferred, main-path fallback (must be after DL, before L2).
-	if cycle_p2.size() >= 3:
+	if cycle_p2.size() >= 2:
 		_set_node_kind(cycle_p2[1].id, GraphData.KIND_KEY, "K2")
 	else:
 		_set_node_kind(p2[randi_range(2, p2_n - 1)], GraphData.KIND_KEY, "K2")
@@ -185,8 +242,9 @@ func _generate_random_puzzle() -> void:
 	hint_label.modulate = Color("888780")
 	_start_sim()
 
-# Attach a 3-node ring (c0→c1→c2→c0) to a randomly chosen plain node on the path.
-# Returns [c0, c1, c2], or [] if no plain anchor is available.
+# Attach a 2-node linear stub (anchor→c0→c1) to a randomly chosen plain node on the path.
+# Returns [c0, c1], or [] if no plain anchor is available.
+# A linear stub cannot self-cross; the old 3-cycle ring produced unavoidable orthogonal crossings.
 func _add_path_cycle(path: Array, reserved: Array, y_dir: float) -> Array:
 	var plain: Array = []
 	for i in range(1, path.size() - 1):
@@ -197,15 +255,13 @@ func _add_path_cycle(path: Array, reserved: Array, y_dir: float) -> Array:
 	if anchor == null or graph.free_sides(anchor.id).is_empty(): return []
 
 	var gs := float(graph.grid_size)
-	var cx_off := float(randi_range(-1, 1)) * gs
-	var center := anchor.pos + Vector2(cx_off, y_dir * 2.5 * gs)
+	# Place stub directly above (P1) or below (P2) anchor — purely vertical so it
+	# cannot cross horizontal main-path edges.
 	var c: Array = []
-	for i in range(3):
-		var angle := float(i) / 3.0 * TAU + PI * 0.5
-		c.append(graph.add_node(graph.snap_vec(center + Vector2(cos(angle), sin(angle)) * gs * 1.2)))
+	c.append(graph.add_node(anchor.pos + Vector2(0.0, y_dir * 2.0 * gs)))
+	c.append(graph.add_node(anchor.pos + Vector2(0.0, y_dir * 3.0 * gs)))
 	graph.add_edge(anchor.id, c[0].id)
-	for i in range(3):
-		graph.add_edge(c[i].id, c[(i + 1) % 3].id)
+	graph.add_edge(c[0].id, c[1].id)
 	return c
 
 func _set_node_kind(node_id: int, kind: String, label: String) -> void:

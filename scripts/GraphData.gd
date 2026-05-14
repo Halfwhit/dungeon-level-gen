@@ -475,14 +475,29 @@ func route_edge(e: EdgeData, h_occ: Dictionary, v_occ: Dictionary, h_edge: Dicti
 			return _seg_overlaps(sx, ay, by, v_edge) or _seg_crosses_perp(sx, ay, by, h_edge)
 		if _node_on_seg(ay, by, safe_x, false, e.a, e.b) \
 				or _point_on_seg(safe_x, ay, h_edge, v_edge) or _ah_seg.call(safe_x):
-			safe_x = find_free_lane(bx, v_edge, v_edge, float(grid_size), int(dir_x))
+			# Detour toward ax (backward), not past bx, to stay within the graph bounds.
+			safe_x = find_free_lane(bx, v_edge, v_edge, float(grid_size), -int(dir_x))
 			var _t := 0
 			while _t < 8 and _ah_seg.call(safe_x):
-				safe_x += float(grid_size) * dir_x; _t += 1
+				safe_x -= float(grid_size) * dir_x; _t += 1
 		if absf(safe_x - bx) < 0.1:
 			pts = [Vector2(ax, ay), Vector2(bx, ay), Vector2(bx, by)]
 		else:
 			pts = [Vector2(ax, ay), Vector2(safe_x, ay), Vector2(safe_x, by), Vector2(bx, by)]
+
+	# Corridor clamp: if the route goes left of S or right of E, fall back to a simple
+	# L-shape. The L-shape may still cross; resolve_crossings handles that via side reassignment.
+	if nodes.size() >= 2:
+		var s_bound: float = nodes[0].pos.x          # no route point may go left of S
+		var e_bound: float = nodes[1].pos.x + float(grid_size)  # allow 1 step past E
+		for p in pts:
+			if p.x < s_bound or p.x > e_bound:
+				# Try V-H first (exit A vertically), then H-V as fallback.
+				if absf(ax - bx) > 0.1 and absf(ay - by) > 0.1:
+					pts = [Vector2(ax, ay), Vector2(ax, by), Vector2(bx, by)]
+				else:
+					pts = [Vector2(ax, ay), Vector2(bx, by)]
+				break
 
 	# Snap all points and drop consecutive duplicates (handles degenerate cases).
 	var result: Array = []
@@ -609,6 +624,9 @@ func compact_layout() -> void:
 			var old_pos: Vector2 = n.pos
 			for step: Vector2 in steps:
 				var new_pos: Vector2 = old_pos + step
+				# Enforce S–E x-corridor: no non-anchor node may be compacted past either anchor.
+				if new_pos.x < nodes[0].pos.x + min_px or new_pos.x > nodes[1].pos.x - min_px:
+					continue
 				var ok := true
 				for other: NodeData in nodes:
 					if other.id == n.id: continue
@@ -617,6 +635,47 @@ func compact_layout() -> void:
 					n.pos = new_pos; moved = true; break
 
 		if not moved: break  # fully packed — nothing left to move
+
+# After compact_layout, reposition 2-node stubs (anchor→c0→c1) so they hang straight
+# above or below their anchor regardless of where the force sim placed them.
+# y_dir is inferred from whether the anchor is above or below the node centroid.
+func fix_stub_positions() -> void:
+	if nodes.size() < 3: return
+	var gs := float(grid_size)
+	var centroid_y := 0.0
+	for n in nodes: centroid_y += n.pos.y
+	centroid_y /= float(nodes.size())
+
+	var degree: Dictionary = {}
+	for n in nodes: degree[n.id] = 0
+	for e in edges:
+		degree[e.a] += 1
+		degree[e.b] += 1
+
+	for leaf in nodes:
+		if leaf.id == nodes[0].id or leaf.id == nodes[1].id: continue
+		if degree[leaf.id] != 1: continue  # must be a dead-end (c1)
+
+		# Find c0 (leaf's only neighbour)
+		var c0: NodeData = null
+		for e in edges:
+			if e.a == leaf.id: c0 = node_by_id(e.b); break
+			if e.b == leaf.id: c0 = node_by_id(e.a); break
+		if c0 == null or degree[c0.id] != 2: continue
+
+		# Find the anchor (c0's other neighbour, not the leaf)
+		var anchor: NodeData = null
+		for e in edges:
+			var other_id := -1
+			if e.a == c0.id: other_id = e.b
+			elif e.b == c0.id: other_id = e.a
+			if other_id >= 0 and other_id != leaf.id:
+				anchor = node_by_id(other_id); break
+		if anchor == null: continue
+
+		var y_dir: float = -1.0 if anchor.pos.y < centroid_y else 1.0
+		c0.pos = snap_vec(anchor.pos + Vector2(0.0, y_dir * 2.0 * gs))
+		leaf.pos = snap_vec(anchor.pos + Vector2(0.0, y_dir * 3.0 * gs))
 
 # Route all edges except e once, then for each valid side combination re-route
 # only e and check it against the cached other-edge paths. Far cheaper than
