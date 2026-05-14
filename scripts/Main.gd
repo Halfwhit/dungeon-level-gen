@@ -213,8 +213,11 @@ func _generate_random_puzzle() -> void:
 	p1.append(e_id)
 
 	var p2 := [s_id]
-	# p2[1] = DL: start directly below S so the sim spring keeps it near the start.
-	p2.append(graph.add_node(graph.snap_vec(Vector2(0.0, v_off))).id)
+	# p2[1]=DL, p2[2]=SR (special room), p2[3]=L2 — all anchored near S.
+	# Plain nodes (4..p2_n+1) are where the K2 branch can attach, closer to E.
+	# Traveling E→S: branch(K2) → L2 → SR → DL.
+	p2.append(graph.add_node(graph.snap_vec(Vector2(0.0, v_off))).id)        # DL
+	p2.append(graph.add_node(graph.snap_vec(Vector2(gs,  v_off))).id)        # SR
 	for i in range(1, p2_n):
 		var x := (float(i) / float(p2_n)) * total_w
 		var y := v_off + float(randi_range(-1, 1)) * gs
@@ -228,11 +231,8 @@ func _generate_random_puzzle() -> void:
 	_p1_ids = p1.duplicate()
 	_p2_ids = p2.duplicate()
 
-	# P1: L1 at last intermediate. P2: DL at index 1 (close to S), L2 at index 2,
-	# leaving positions 3..p2_n as plain nodes for the K2 branch.
-	# This way, traveling E→S on P2, the branch (K2) is encountered before L2.
 	var res1 := [p1_n]
-	var res2 := [1, 2]
+	var res2 := [1, 2, 3]  # DL, SR, L2 reserved; plain nodes at 4..p2_n+1
 
 	var cycle_p1 := _add_path_cycle(p1, res1, -1.0)
 	var cycle_p2 := _add_path_cycle(p2, res2,  1.0)
@@ -241,7 +241,8 @@ func _generate_random_puzzle() -> void:
 
 	_set_node_kind(p1[p1_n],   GraphData.KIND_LOCK,     "L1")
 	_set_node_kind(p2[1],      GraphData.KIND_DEADLOCK, "DL")
-	_set_node_kind(p2[2],      GraphData.KIND_LOCK,     "L2")
+	_set_node_kind(p2[2],      GraphData.KIND_SPECIAL,  "SR")
+	_set_node_kind(p2[3],      GraphData.KIND_LOCK,     "L2")
 
 	# K1: branch preferred, main-path fallback.
 	if cycle_p1.size() >= 3:
@@ -249,13 +250,13 @@ func _generate_random_puzzle() -> void:
 	else:
 		_set_node_kind(p1[randi_range(1, p1_n - 1)], GraphData.KIND_KEY, "K1")
 
-	# K2: branch preferred, main-path fallback (must be between L2 and E, i.e. indices 3..p2_n).
+	# K2: branch preferred, main-path fallback (indices 4..p2_n+1, after L2).
 	if cycle_p2.size() >= 3:
 		_set_node_kind(cycle_p2[1].id, GraphData.KIND_KEY, "K2")
 	else:
-		_set_node_kind(p2[randi_range(3, p2_n)], GraphData.KIND_KEY, "K2")
+		_set_node_kind(p2[randi_range(4, p2_n + 1)], GraphData.KIND_KEY, "K2")
 
-	_puzzle_hint = "P1: branch(K1) → L1   P2: branch(K2) → L2 → DL"
+	_puzzle_hint = "P1: branch(K1) → L1   P2: branch(K2) → L2 → SR → DL"
 	hint_label.text = _puzzle_hint
 	hint_label.modulate = Color("888780")
 	_start_sim()
