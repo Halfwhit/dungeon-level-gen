@@ -1,7 +1,11 @@
 class_name GraphCanvas
 extends Control
 
-var graph: GraphData
+var graph: GraphData:
+	set(value):
+		graph = value
+		_paths_valid = false
+var _paths_valid: bool = false
 var sim_running: bool = false
 
 var zoom: float = 1.0
@@ -49,7 +53,6 @@ var edge_path_map: Dictionary = {}
 var routed_paths: Array = []
 
 func s2w(p: Vector2) -> Vector2: return (p - pan) / zoom
-func w2s(p: Vector2) -> Vector2: return p * zoom + pan
 
 func fit_to_view() -> void:
 	if graph == null or graph.nodes.is_empty(): return
@@ -89,7 +92,9 @@ func _draw():
 		return
 	draw_set_transform(pan, 0.0, Vector2(zoom, zoom))
 	_draw_grid()
-	_compute_paths()
+	if sim_running or not _paths_valid:
+		_compute_paths()
+		_paths_valid = not sim_running
 	_draw_edges()
 	_draw_nodes()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -137,9 +142,9 @@ func _draw_edges():
 		var pi = edge_path_map.get(key, edge_path_map.get(str(e.b)+","+str(e.a), 0))
 		var col = C_PATH1 if pi == 1 else (C_PATH2 if pi == 2 else C_EDGE)
 		var lw = 3.0 if pi > 0 else 2.0
-		_draw_polyline_clamped(pts, col, lw, na.pos, nb.pos)
+		_draw_polyline_clamped(pts, col, lw)
 
-func _draw_polyline_clamped(pts: Array, col: Color, lw: float, _start_pos: Vector2, _end_pos: Vector2):
+func _draw_polyline_clamped(pts: Array, col: Color, lw: float):
 	if pts.size() < 2: return
 	var p0 = pts[0]; var p1 = pts[1]
 	var d0 = (p1 - p0)
@@ -175,7 +180,7 @@ func _draw_nodes():
 		var is_special = (n.kind == GraphData.KIND_SPECIAL)
 
 		if is_key or is_lock or is_dead or is_special:
-			_draw_lock_key_node(n, is_key, is_dead, is_special)
+			_draw_lock_key_node(n, is_key, is_lock, is_dead, is_special)
 		else:
 			var fill: Color; var stroke: Color; var lw = 1.5
 			if is_start: fill = C_START_FILL; stroke = C_START_BORDER; lw = 2.5
@@ -194,12 +199,12 @@ func _draw_nodes():
 
 		_draw_ports(n)
 
-func _draw_lock_key_node(n: GraphData.NodeData, is_key: bool, is_dead: bool, is_special: bool):
+func _draw_lock_key_node(n: GraphData.NodeData, is_key: bool, is_lock: bool, is_dead: bool, is_special: bool):
 	var fill: Color; var border: Color; var lw := 1.5
-	if is_dead: fill = C_DEAD_FILL; border = C_DEAD_BORDER; lw = 2.0
+	if is_dead:    fill = C_DEAD_FILL;    border = C_DEAD_BORDER;    lw = 2.0
 	elif is_special: fill = C_SPECIAL_FILL; border = C_SPECIAL_BORDER; lw = 2.0
-	elif is_key: fill = C_KEY_FILL; border = C_KEY_BORDER
-	else: fill = C_LOCK_FILL; border = C_LOCK_BORDER
+	elif is_key:   fill = C_KEY_FILL;     border = C_KEY_BORDER
+	else:          fill = C_LOCK_FILL;    border = C_LOCK_BORDER
 	var h = SQ_SIZE / 2.0
 	var r = Rect2(n.pos - Vector2(h, h), Vector2(SQ_SIZE, SQ_SIZE))
 	draw_rect(r, fill)
@@ -207,7 +212,11 @@ func _draw_lock_key_node(n: GraphData.NodeData, is_key: bool, is_dead: bool, is_
 	var icon = "🔑" if is_key else ("★" if is_special else "🔒")
 	var icon_col = C_SPECIAL_BORDER if is_special else Color.WHITE
 	_draw_label(n.pos + Vector2(0, -5), icon, icon_col, 14)
-	var text_col = C_DEAD_TEXT if is_dead else (C_SPECIAL_TEXT if is_special else (C_KEY_TEXT if is_key else C_LOCK_TEXT))
+	var text_col: Color
+	if is_dead:      text_col = C_DEAD_TEXT
+	elif is_special: text_col = C_SPECIAL_TEXT
+	elif is_key:     text_col = C_KEY_TEXT
+	else:            text_col = C_LOCK_TEXT
 	_draw_label(n.pos + Vector2(0, 8), n.label, text_col, 9)
 	if is_dead:
 		var m = h * 0.55

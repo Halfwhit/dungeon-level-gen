@@ -7,8 +7,6 @@ const KIND_KEY = "key"
 const KIND_LOCK = "lock"
 const KIND_DEADLOCK = "deadlock"  # lock with no key — intentional barrier
 const KIND_SPECIAL  = "special"   # special room / point of interest
-const KIND_START = "start"
-const KIND_END = "end"
 
 # Cardinal sides: 0=top 1=right 2=bottom 3=left
 const SIDE_DIRS = [Vector2(0,-1), Vector2(1,0), Vector2(0,1), Vector2(-1,0)]
@@ -20,6 +18,7 @@ var grid_size: int = 60
 var nodes: Array = []   # Array of NodeData
 var edges: Array = []   # Array of EdgeData
 var node_counter: int = 0
+var _node_map: Dictionary = {}   # id → NodeData for O(1) lookup
 
 # ── Node ──────────────────────────────────────────────────────────────────────
 class NodeData:
@@ -60,18 +59,15 @@ func snap_vec(v: Vector2) -> Vector2:
 
 func is_vert_side(s: int) -> bool: return s == 0 or s == 2
 
-func _node_on_hseg(x1: float, x2: float, y: float, skip_a: int, skip_b: int) -> bool:
-	var sy: float = snap(y); var xlo: float = min(x1, x2); var xhi: float = max(x1, x2)
+# horiz=true: horizontal segment (fixed y, range over x); horiz=false: vertical (fixed x, range over y).
+func _node_on_seg(r1: float, r2: float, fixed: float, horiz: bool, skip_a: int, skip_b: int) -> bool:
+	var sf: float = snap(fixed); var lo: float = minf(r1, r2); var hi: float = maxf(r1, r2)
 	for n in nodes:
 		if n.id == skip_a or n.id == skip_b: continue
-		if snap(n.pos.y) == sy and n.pos.x > xlo and n.pos.x < xhi: return true
-	return false
-
-func _node_on_vseg(x: float, y1: float, y2: float, skip_a: int, skip_b: int) -> bool:
-	var sx: float = snap(x); var ylo: float = min(y1, y2); var yhi: float = max(y1, y2)
-	for n in nodes:
-		if n.id == skip_a or n.id == skip_b: continue
-		if snap(n.pos.x) == sx and n.pos.y > ylo and n.pos.y < yhi: return true
+		if horiz:
+			if snap(n.pos.y) == sf and n.pos.x > lo and n.pos.x < hi: return true
+		else:
+			if snap(n.pos.x) == sf and n.pos.y > lo and n.pos.y < hi: return true
 	return false
 
 # Check whether an existing routed segment overlaps this proposed segment.
@@ -89,24 +85,14 @@ func _mark_seg(coord: float, a1: float, a2: float, segs: Dictionary) -> void:
 	if not segs.has(sc): segs[sc] = []
 	segs[sc].append([snap(minf(a1, a2)), snap(maxf(a1, a2))])
 
-# True if a proposed horizontal segment (y, x1→x2) would cross any recorded vertical segment.
-func _hseg_crosses_vsegs(y: float, x1: float, x2: float, v_edge: Dictionary) -> bool:
-	var sy: float = snap(y)
-	var xlo: float = minf(x1, x2); var xhi: float = maxf(x1, x2)
-	for vx in v_edge:
-		if vx <= xlo or vx >= xhi: continue
-		for seg in v_edge[vx]:
-			if seg[0] < sy and sy < seg[1]: return true
-	return false
-
-# True if a proposed vertical segment (x, y1→y2) would cross any recorded horizontal segment.
-func _vseg_crosses_hsegs(x: float, y1: float, y2: float, h_edge: Dictionary) -> bool:
-	var sx: float = snap(x)
-	var ylo: float = minf(y1, y2); var yhi: float = maxf(y1, y2)
-	for hy in h_edge:
-		if hy <= ylo or hy >= yhi: continue
-		for seg in h_edge[hy]:
-			if seg[0] < sx and sx < seg[1]: return true
+# Returns true if the proposed segment (fixed coord, range r1→r2) crosses any segment
+# recorded in perp_segs (the perpendicular-axis dictionary: h_edge for V→H, v_edge for H→V).
+func _seg_crosses_perp(fixed: float, r1: float, r2: float, perp_segs: Dictionary) -> bool:
+	var sf: float = snap(fixed); var lo: float = minf(r1, r2); var hi: float = maxf(r1, r2)
+	for key in perp_segs:
+		if key <= lo or key >= hi: continue
+		for seg in perp_segs[key]:
+			if seg[0] < sf and sf < seg[1]: return true
 	return false
 
 # Returns true if the point (px, py) lies on (or touches the endpoint of) any
@@ -122,16 +108,7 @@ func _point_on_seg(px: float, py: float, h_edge: Dictionary, v_edge: Dictionary)
 	return false
 
 func node_by_id(id: int) -> NodeData:
-	for n in nodes:
-		if n.id == id:
-			return n
-	return null
-
-func edge_by_id(id: int) -> EdgeData:
-	for e in edges:
-		if e.id == id:
-			return e
-	return null
+	return _node_map.get(id, null)
 
 func has_edge(a: int, b: int) -> bool:
 	for e in edges:
@@ -166,10 +143,6 @@ func free_sides(node_id: int) -> Array:
 func is_full(node_id: int) -> bool:
 	return free_sides(node_id).is_empty()
 
-func can_connect(a: int, b: int) -> bool:
-	if has_edge(a, b) or a == b:
-		return false
-	return free_sides(a).size() > 0 and free_sides(b).size() > 0
 
 func pick_sides_for_new(na: NodeData, nb: NodeData) -> Dictionary:
 	var fa = free_sides(na.id)
@@ -243,8 +216,7 @@ func reassign_all_sides() -> void:
 			used.append(s)
 
 # One-shot pass after layout: if an assigned side faces away from its neighbour
-# and the opposite side is free, flip it. Runs once in _compute_layout_threaded
-# so the correction persists and the port indicators match the drawn stubs.
+# and the opposite side is free, flip it so port indicators match the actual exit direction.
 func correct_backward_sides() -> void:
 	for e in edges:
 		var na := node_by_id(e.a); var nb := node_by_id(e.b)
@@ -433,48 +405,65 @@ func route_edge(e: EdgeData, h_occ: Dictionary, v_occ: Dictionary, h_edge: Dicti
 
 	if a_vert and b_vert:
 		# Both exits vertical → Z-shape: V then H then V.
-		# Direct line when nodes share the same column.
 		if absf(ax - bx) < 0.1:
-			pts = [Vector2(ax, ay), Vector2(bx, by)]
+			# Same column: detour through a side column if a V-seg is already there.
+			if _seg_overlaps(ax, ay, by, v_edge):
+				var off := find_free_lane(ax, v_edge, v_edge, float(grid_size), 0)
+				pts = [Vector2(ax, ay), Vector2(off, ay), Vector2(off, by), Vector2(bx, by)]
+			else:
+				pts = [Vector2(ax, ay), Vector2(bx, by)]
 		else:
 			var mid_y: float = snap((ay + by) / 2.0)
-			if _node_on_hseg(ax, bx, mid_y, e.a, e.b) or _seg_overlaps(mid_y, ax, bx, h_edge) \
-					or _hseg_crosses_vsegs(mid_y, ax, bx, v_edge) \
-					or _point_on_seg(ax, mid_y, h_edge, v_edge) or _point_on_seg(bx, mid_y, h_edge, v_edge):
-				mid_y = find_free_lane(mid_y, h_occ, h_edge, float(grid_size), 0)
+			var dir_y := signf(by - ay) if absf(by - ay) > 0.1 else 1.0
+			# Seg-only check drives the nudge loop — node/corner checks only trigger the initial move.
+			var _bv_seg := func(my: float) -> bool:
+				return _seg_overlaps(my, ax, bx, h_edge) or _seg_crosses_perp(my, ax, bx, v_edge)
+			if _node_on_seg(ax, bx, mid_y, true, e.a, e.b) \
+					or _point_on_seg(ax, mid_y, h_edge, v_edge) or _bv_seg.call(mid_y):
+				mid_y = find_free_lane(mid_y, h_edge, h_edge, float(grid_size), int(dir_y))
 				var _t := 0
-				while _t < 8 and (_point_on_seg(ax, mid_y, h_edge, v_edge) or _point_on_seg(bx, mid_y, h_edge, v_edge)):
-					mid_y += float(grid_size); _t += 1
+				while _t < 8 and _bv_seg.call(mid_y):
+					mid_y += float(grid_size) * dir_y; _t += 1
 			pts = [Vector2(ax, ay), Vector2(ax, mid_y), Vector2(bx, mid_y), Vector2(bx, by)]
 
 	elif not a_vert and not b_vert:
 		# Both exits horizontal → Z-shape: H then V then H.
-		# Direct line when nodes share the same row.
 		if absf(ay - by) < 0.1:
-			pts = [Vector2(ax, ay), Vector2(bx, by)]
+			# Same row: detour through a side row if an H-seg is already there.
+			if _seg_overlaps(ay, ax, bx, h_edge):
+				var off := find_free_lane(ay, h_edge, h_edge, float(grid_size), 0)
+				pts = [Vector2(ax, ay), Vector2(ax, off), Vector2(bx, off), Vector2(bx, by)]
+			else:
+				pts = [Vector2(ax, ay), Vector2(bx, by)]
 		else:
 			var mid_x: float = snap((ax + bx) / 2.0)
-			if _node_on_vseg(mid_x, ay, by, e.a, e.b) or _seg_overlaps(mid_x, ay, by, v_edge) \
-					or _vseg_crosses_hsegs(mid_x, ay, by, h_edge) \
-					or _point_on_seg(mid_x, ay, h_edge, v_edge) or _point_on_seg(mid_x, by, h_edge, v_edge):
-				mid_x = find_free_lane(mid_x, v_occ, v_edge, float(grid_size), 0)
+			var dir_x := signf(bx - ax) if absf(bx - ax) > 0.1 else 1.0
+			# Seg-only check drives the nudge loop — node/corner checks only trigger the initial move.
+			var _bh_seg := func(mx: float) -> bool:
+				return _seg_overlaps(mx, ay, by, v_edge) or _seg_crosses_perp(mx, ay, by, h_edge)
+			if _node_on_seg(ay, by, mid_x, false, e.a, e.b) \
+					or _point_on_seg(mid_x, ay, h_edge, v_edge) or _bh_seg.call(mid_x):
+				mid_x = find_free_lane(mid_x, v_edge, v_edge, float(grid_size), int(dir_x))
 				var _t := 0
-				while _t < 8 and (_point_on_seg(mid_x, ay, h_edge, v_edge) or _point_on_seg(mid_x, by, h_edge, v_edge)):
-					mid_x += float(grid_size); _t += 1
+				while _t < 8 and _bh_seg.call(mid_x):
+					mid_x += float(grid_size) * dir_x; _t += 1
 			pts = [Vector2(ax, ay), Vector2(mid_x, ay), Vector2(mid_x, by), Vector2(bx, by)]
 
 	elif a_vert:
 		# A exits vertically, B exits horizontally → L/Z-shape.
-		# Default: go directly to B's y-level (natural direction toward B).
+		# dir_y keeps lane search and nudge toward B, preventing U-turn routes.
+		var dir_y := signf(by - ay) if absf(by - ay) > 0.1 else 1.0
 		var safe_y: float = by
-		if _node_on_hseg(ax, bx, safe_y, e.a, e.b) or _seg_overlaps(safe_y, ax, bx, h_edge) \
-				or _hseg_crosses_vsegs(safe_y, ax, bx, v_edge) \
-				or _point_on_seg(ax, safe_y, h_edge, v_edge) or _point_on_seg(bx, safe_y, h_edge, v_edge):
-			safe_y = find_free_lane(by, h_occ, h_edge, float(grid_size), 0)
+		# Seg-only check drives the nudge loop — node/corner checks only trigger the initial move.
+		var _av_seg := func(sy: float) -> bool:
+			return _seg_overlaps(sy, ax, bx, h_edge) or _seg_crosses_perp(sy, ax, bx, v_edge)
+		if _node_on_seg(ax, bx, safe_y, true, e.a, e.b) \
+				or _point_on_seg(ax, safe_y, h_edge, v_edge) or _av_seg.call(safe_y):
+			safe_y = find_free_lane(by, h_edge, h_edge, float(grid_size), int(dir_y))
 			var _t := 0
-			while _t < 8 and (_point_on_seg(ax, safe_y, h_edge, v_edge) or _point_on_seg(bx, safe_y, h_edge, v_edge)):
-				safe_y += float(grid_size); _t += 1
-		# 3-point L when the turn is at B's exact row; 4-point Z otherwise.
+			while _t < 8 and _av_seg.call(safe_y):
+				safe_y += float(grid_size) * dir_y; _t += 1
+		# 3-point L when turn is at B's exact row; 4-point Z otherwise.
 		if absf(safe_y - by) < 0.1:
 			pts = [Vector2(ax, ay), Vector2(ax, by), Vector2(bx, by)]
 		else:
@@ -482,16 +471,19 @@ func route_edge(e: EdgeData, h_occ: Dictionary, v_occ: Dictionary, h_edge: Dicti
 
 	else:
 		# A exits horizontally, B exits vertically → L/Z-shape.
-		# Default: go directly to B's x-column (natural direction toward B).
+		# dir_x keeps lane search and nudge toward B, preventing U-turn routes.
+		var dir_x := signf(bx - ax) if absf(bx - ax) > 0.1 else 1.0
 		var safe_x: float = bx
-		if _node_on_vseg(safe_x, ay, by, e.a, e.b) or _seg_overlaps(safe_x, ay, by, v_edge) \
-				or _vseg_crosses_hsegs(safe_x, ay, by, h_edge) \
-				or _point_on_seg(safe_x, ay, h_edge, v_edge) or _point_on_seg(safe_x, by, h_edge, v_edge):
-			safe_x = find_free_lane(bx, v_occ, v_edge, float(grid_size), 0)
+		# Seg-only check drives the nudge loop — node/corner checks only trigger the initial move.
+		var _ah_seg := func(sx: float) -> bool:
+			return _seg_overlaps(sx, ay, by, v_edge) or _seg_crosses_perp(sx, ay, by, h_edge)
+		if _node_on_seg(ay, by, safe_x, false, e.a, e.b) \
+				or _point_on_seg(safe_x, ay, h_edge, v_edge) or _ah_seg.call(safe_x):
+			safe_x = find_free_lane(bx, v_edge, v_edge, float(grid_size), int(dir_x))
 			var _t := 0
-			while _t < 8 and (_point_on_seg(safe_x, ay, h_edge, v_edge) or _point_on_seg(safe_x, by, h_edge, v_edge)):
-				safe_x += float(grid_size); _t += 1
-		# 3-point L when the turn is at B's exact column; 4-point Z otherwise.
+			while _t < 8 and _ah_seg.call(safe_x):
+				safe_x += float(grid_size) * dir_x; _t += 1
+		# 3-point L when turn is at B's exact column; 4-point Z otherwise.
 		if absf(safe_x - bx) < 0.1:
 			pts = [Vector2(ax, ay), Vector2(bx, ay), Vector2(bx, by)]
 		else:
@@ -548,51 +540,6 @@ func paths_cross(pts1: Array, pts2: Array) -> bool:
 				return true
 	return false
 
-func check_intersections(proposed_edges: Array, proposed_nodes: Array) -> String:
-	var all_nodes = nodes.filter(func(n): return not proposed_nodes.any(func(p): return p.id == n.id)) + proposed_nodes
-	var saved = nodes
-	nodes = all_nodes
-	var h_occ = {}; var v_occ = {}
-	for n in all_nodes:
-		h_occ[snap(n.pos.y)] = true; v_occ[snap(n.pos.x)] = true
-	var ex_h = {}; var ex_v = {}
-	var existing_paths = []
-	for e in edges:
-		existing_paths.append(route_edge(e, h_occ, v_occ, ex_h, ex_v))
-	var pr_h = ex_h.duplicate(); var pr_v = ex_v.duplicate()
-	var proposed_paths = []
-	for e in proposed_edges:
-		proposed_paths.append(route_edge(e, h_occ, v_occ, pr_h, pr_v))
-	nodes = saved
-
-	for i in range(proposed_paths.size()):
-		var pp = proposed_paths[i]
-		if pp.is_empty(): continue
-		for j in range(existing_paths.size()):
-			var ep = existing_paths[j]
-			if ep.is_empty(): continue
-			var pe = proposed_edges[i]; var ee = edges[j]
-			if pe.a==ee.a or pe.a==ee.b or pe.b==ee.a or pe.b==ee.b: continue
-			if paths_cross(pp, ep):
-				var na = all_nodes.filter(func(n): return n.id==pe.a)
-				var nb = all_nodes.filter(func(n): return n.id==pe.b)
-				var ea = all_nodes.filter(func(n): return n.id==ee.a)
-				var eb = all_nodes.filter(func(n): return n.id==ee.b)
-				return "Edge %s–%s crosses %s–%s" % [
-					na[0].label if na.size()>0 else "?",
-					nb[0].label if nb.size()>0 else "?",
-					ea[0].label if ea.size()>0 else "?",
-					eb[0].label if eb.size()>0 else "?"]
-	for i in range(proposed_paths.size()):
-		var pp = proposed_paths[i]; if pp.is_empty(): continue
-		for j in range(i+1, proposed_paths.size()):
-			var qp = proposed_paths[j]; if qp.is_empty(): continue
-			var pe = proposed_edges[i]; var qe = proposed_edges[j]
-			if pe.a==qe.a or pe.a==qe.b or pe.b==qe.a or pe.b==qe.b: continue
-			if paths_cross(pp, qp):
-				return "New edges would cross each other"
-	return ""
-
 # ── Node creation ─────────────────────────────────────────────────────────────
 func next_id() -> int:
 	node_counter += 1
@@ -604,6 +551,7 @@ func add_node(pos: Vector2, label: String = "", kind: String = "") -> NodeData:
 		label = "n" + str(id)
 	var n = NodeData.new(id, snap_vec(pos), label, kind)
 	nodes.append(n)
+	_node_map[n.id] = n
 	return n
 
 func add_edge(a: int, b: int) -> EdgeData:
@@ -616,19 +564,20 @@ func add_edge(a: int, b: int) -> EdgeData:
 	return e
 
 func remove_node(id: int) -> void:
+	_node_map.erase(id)
 	nodes = nodes.filter(func(n): return n.id != id)
 	edges = edges.filter(func(e): return e.a != id and e.b != id)
 
 func remove_edge(id: int) -> void:
 	edges = edges.filter(func(e): return e.id != id)
 
+func clear_graph() -> void:
+	nodes.clear(); edges.clear(); _node_map.clear(); node_counter = 0
+
 # ── Layout compaction ─────────────────────────────────────────────────────────
-# After the force sim settles, squeezes nodes toward the centroid one grid step
-# at a time. A move is accepted only when:
-#   1. Every other node stays ≥ MIN_SEP grid units away (1 empty cell of gap).
-#   2. No pair of non-adjacent edges crosses after side reassignment.
-# Nodes are free to reassign which side their edges exit from if that lets the
-# routing fit without crossings.
+# Pure proximity compaction: squeezes nodes toward the centroid one grid step
+# at a time, accepted only when every other node stays ≥ MIN_SEP apart.
+# Crossings are repaired by resolve_crossings() before and after this call.
 func compact_layout() -> void:
 	if nodes.size() < 2: return
 	const MIN_SEP = 1.5
@@ -711,8 +660,6 @@ func _try_alternative_sides(e: EdgeData) -> bool:
 			var ok := true
 			for j in range(other_paths.size()):
 				if j == e_idx or other_paths[j].is_empty(): continue
-				var ej: EdgeData = edges[j]
-				if e.a == ej.a or e.a == ej.b or e.b == ej.a or e.b == ej.b: continue
 				if paths_cross(e_path, other_paths[j]): ok = false; break
 			if ok: return true
 
@@ -728,8 +675,8 @@ func _sides_used_except(node_id: int, skip_edge_id: int) -> Array:
 		if e.b == node_id: used.append(e.side_b)
 	return used
 
-# Repair any crossings by searching for alternative side assignments for the
-# two edges involved. Runs before compaction so the starting layout is clean.
+# Repair any crossings by searching for alternative side assignments.
+# Runs before and after compaction.
 func resolve_crossings() -> void:
 	reassign_all_sides()
 	const MAX_FIXES = 60
@@ -742,7 +689,6 @@ func resolve_crossings() -> void:
 			for j in range(i + 1, edges.size()):
 				if j >= paths.size() or paths[j].is_empty(): continue
 				var ei: EdgeData = edges[i]; var ej: EdgeData = edges[j]
-				if ei.a == ej.a or ei.a == ej.b or ei.b == ej.a or ei.b == ej.b: continue
 				if not paths_cross(paths[i], paths[j]): continue
 				if _try_alternative_sides(ei) or _try_alternative_sides(ej):
 					fixed = true; break
@@ -755,8 +701,6 @@ func _any_edges_cross() -> bool:
 		if paths[i].is_empty(): continue
 		for j in range(i + 1, paths.size()):
 			if paths[j].is_empty(): continue
-			var ei: EdgeData = edges[i]; var ej: EdgeData = edges[j]
-			if ei.a == ej.a or ei.a == ej.b or ei.b == ej.a or ei.b == ej.b: continue
 			if paths_cross(paths[i], paths[j]): return true
 	return false
 
@@ -775,9 +719,9 @@ func simulate_step(delta: float, dragging_id: int, alpha: float) -> float:
 	var min_sep_px: float = MIN_SEP * grid_size
 	var repel_px: float = REPEL * min_sep_px * min_sep_px
 
-	var forces = []
-	for i in range(n):
-		forces.append(Vector2.ZERO)
+	var forces: Array = []
+	forces.resize(n)
+	for i in range(n): forces[i] = Vector2.ZERO
 
 	# Repulsion
 	for i in range(n):

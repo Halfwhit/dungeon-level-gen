@@ -80,7 +80,7 @@ func _reset_graph() -> void:
 	if _computing:
 		if _worker != null: _worker.wait_to_finish()
 		_worker = null; _computing = false
-	graph.nodes.clear(); graph.edges.clear(); graph.node_counter = 0
+	graph.clear_graph()
 	canvas.graph = graph   # re-attach in case it was nulled during computation
 	canvas.sim_running = false
 	sim_alpha = 1.0
