@@ -50,11 +50,15 @@ func _process(delta: float) -> void:
 func _start_sim() -> void:
 	if graph.nodes.size() < 2: return
 	sim_alpha = 1.0
+	var gs := float(graph.grid_size)
+	var s_x: float = graph.nodes[0].pos.x; var e_x: float = graph.nodes[1].pos.x
 	for i in range(graph.nodes.size()):
 		var n: GraphData.NodeData = graph.nodes[i]
 		n.vel = Vector2.ZERO
 		if i >= 2:   # S (nodes[0]) and E (nodes[1]) are fixed anchors — don't jitter them
 			n.pos += Vector2(randf_range(-2.0, 2.0), randf_range(-2.0, 2.0)) * graph.grid_size
+			# Clamp x so jitter never places a node outside the S–E corridor.
+			n.pos.x = clampf(n.pos.x, s_x + gs, e_x - gs)
 			n.pos = graph.snap_vec(n.pos)
 	canvas.sim_running = true
 

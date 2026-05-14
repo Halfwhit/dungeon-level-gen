@@ -759,9 +759,18 @@ func simulate_step(delta: float, dragging_id: int, alpha: float) -> float:
 	var centroid = Vector2.ZERO
 	for node in nodes: centroid += node.pos
 	centroid /= float(n)
+	# Boundary springs: keep non-anchor nodes within the S–E x-corridor so the
+	# path never routes backward. Applied before velocity integration.
+	var s_x: float = nodes[0].pos.x; var e_x: float = nodes[1].pos.x
 	var max_vel = 0.0
 	for i in range(n):
 		forces[i] += (centroid - nodes[i].pos) * 0.02
+		if i >= 2:
+			var xi: float = nodes[i].pos.x
+			if xi < s_x + min_sep_px:
+				forces[i].x += (s_x + min_sep_px - xi) * 1.5
+			elif xi > e_x - min_sep_px:
+				forces[i].x -= (xi - (e_x - min_sep_px)) * 1.5
 		if nodes[i].id == dragging_id or i < 2: continue  # S/E are fixed anchors
 		nodes[i].vel = (nodes[i].vel + forces[i]) * damp
 		max_vel = max(max_vel, nodes[i].vel.length())
