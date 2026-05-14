@@ -52,17 +52,23 @@ var on_path_set: Dictionary = {}
 var edge_path_map: Dictionary = {}
 var routed_paths: Array = []
 
-func s2w(p: Vector2) -> Vector2: return (p - pan) / zoom
+func s2w(p: Vector2) -> Vector2:
+	return (p - pan) / zoom
 
 func fit_to_view() -> void:
-	if graph == null or graph.nodes.is_empty(): return
-	var mn = graph.nodes[0].pos; var mx = graph.nodes[0].pos
+	if graph == null or graph.nodes.is_empty():
+		return
+	var mn = graph.nodes[0].pos
+	var mx = graph.nodes[0].pos
 	for n in graph.nodes:
-		mn = mn.min(n.pos); mx = mx.max(n.pos)
+		mn = mn.min(n.pos)
+		mx = mx.max(n.pos)
 	var margin = graph.grid_size * 4.0
-	mn -= Vector2(margin, margin); mx += Vector2(margin, margin)
+	mn -= Vector2(margin, margin)
+	mx += Vector2(margin, margin)
 	var world_sz = mx - mn
-	if world_sz.x < 1 or world_sz.y < 1: return
+	if world_sz.x < 1 or world_sz.y < 1:
+		return
 	zoom = clampf(min(size.x / world_sz.x, size.y / world_sz.y), ZOOM_MIN, ZOOM_MAX)
 	pan = size * 0.5 - (mn + world_sz * 0.5) * zoom
 	queue_redraw()
@@ -101,7 +107,8 @@ func _draw():
 
 func _draw_grid():
 	var gs = graph.grid_size
-	var tl = s2w(Vector2.ZERO); var br = s2w(size)
+	var tl = s2w(Vector2.ZERO)
+	var br = s2w(size)
 	var dot_r = 1.5 / zoom
 	var x = floor(tl.x / gs) * gs
 	while x <= br.x:
@@ -115,7 +122,9 @@ func _compute_paths():
 	routed_paths = graph.build_all_paths()
 	var s = graph.start_node()
 	var e = graph.end_node()
-	two_paths = {}; on_path_set = {}; edge_path_map = {}
+	two_paths = {}
+	on_path_set = {}
+	edge_path_map = {}
 	if s != null and e != null:
 		two_paths = graph.find_two_paths(s.id, e.id)
 	if not two_paths.is_empty():
@@ -126,7 +135,8 @@ func _compute_paths():
 
 func _mark_path(path: Array, idx: int):
 	for i in range(path.size() - 1):
-		var u = path[i]; var v = path[i+1]
+		var u = path[i]
+		var v = path[i+1]
 		edge_path_map[str(u)+","+str(v)] = idx
 		edge_path_map[str(v)+","+str(u)] = idx
 
@@ -135,9 +145,11 @@ func _draw_edges():
 		var e = graph.edges[i]
 		var na = graph.node_by_id(e.a)
 		var nb = graph.node_by_id(e.b)
-		if na == null or nb == null: continue
+		if na == null or nb == null:
+			continue
 		var pts = routed_paths[i] if i < routed_paths.size() else []
-		if pts.is_empty(): continue
+		if pts.is_empty():
+			continue
 		var key = str(e.a)+","+str(e.b)
 		var pi = edge_path_map.get(key, edge_path_map.get(str(e.b)+","+str(e.a), 0))
 		var col = C_PATH1 if pi == 1 else (C_PATH2 if pi == 2 else C_EDGE)
@@ -145,12 +157,15 @@ func _draw_edges():
 		_draw_polyline_clamped(pts, col, lw)
 
 func _draw_polyline_clamped(pts: Array, col: Color, lw: float):
-	if pts.size() < 2: return
-	var p0 = pts[0]; var p1 = pts[1]
+	if pts.size() < 2:
+		return
+	var p0 = pts[0]
+	var p1 = pts[1]
 	var d0 = (p1 - p0)
 	if d0.length() > 0.1:
 		p0 = p0 + d0.normalized() * NODE_RADIUS
-	var pn = pts[pts.size()-1]; var pn1 = pts[pts.size()-2]
+	var pn = pts[pts.size()-1]
+	var pn1 = pts[pts.size()-2]
 	var dn = (pn1 - pn)
 	if dn.length() > 0.1:
 		pn = pn + dn.normalized() * NODE_RADIUS
@@ -161,7 +176,8 @@ func _draw_polyline_clamped(pts: Array, col: Color, lw: float):
 		var cur = draw_pts[i]
 		if abs(prev.x - cur.x) > 0.1 or abs(prev.y - cur.y) > 0.1:
 			deduped.append(cur)
-	if deduped.size() < 2: return
+	if deduped.size() < 2:
+		return
 	for i in range(deduped.size() - 1):
 		draw_line(deduped[i], deduped[i+1], col, lw, true)
 
@@ -182,29 +198,62 @@ func _draw_nodes():
 		if is_key or is_lock or is_dead or is_special:
 			_draw_lock_key_node(n, is_key, is_lock, is_dead, is_special)
 		else:
-			var fill: Color; var stroke: Color; var lw = 1.5
-			if is_start: fill = C_START_FILL; stroke = C_START_BORDER; lw = 2.5
-			elif is_end: fill = C_END_FILL; stroke = C_END_BORDER; lw = 2.5
-			elif is_off: fill = C_OFF_PATH; stroke = C_OFF_PATH_BORDER; lw = 2.0
-			elif full: fill = C_FULL_FILL; stroke = C_FULL_BORDER; lw = 1.5
-			else: fill = C_NODE_FILL; stroke = C_NODE_STROKE; lw = 1.5
+			var fill: Color
+			var stroke: Color
+			var lw = 1.5
+			if is_start:
+				fill = C_START_FILL
+				stroke = C_START_BORDER
+				lw = 2.5
+			elif is_end:
+				fill = C_END_FILL
+				stroke = C_END_BORDER
+				lw = 2.5
+			elif is_off:
+				fill = C_OFF_PATH
+				stroke = C_OFF_PATH_BORDER
+				lw = 2.0
+			elif full:
+				fill = C_FULL_FILL
+				stroke = C_FULL_BORDER
+				lw = 1.5
+			else:
+				fill = C_NODE_FILL
+				stroke = C_NODE_STROKE
+				lw = 1.5
 			draw_circle(n.pos, NODE_RADIUS, fill)
 			_draw_circle_outline(n.pos, NODE_RADIUS, stroke, lw)
 			var text_col: Color
-			if is_start or is_end: text_col = Color.WHITE
-			elif is_off: text_col = C_OFF_PATH_TEXT
-			elif full: text_col = Color("993C1D")
-			else: text_col = C_NODE_TEXT
+			if is_start or is_end:
+				text_col = Color.WHITE
+			elif is_off:
+				text_col = C_OFF_PATH_TEXT
+			elif full:
+				text_col = Color("993C1D")
+			else:
+				text_col = C_NODE_TEXT
 			_draw_label(n.pos, n.label, text_col)
 
 		_draw_ports(n)
 
 func _draw_lock_key_node(n: GraphData.NodeData, is_key: bool, is_lock: bool, is_dead: bool, is_special: bool):
-	var fill: Color; var border: Color; var lw := 1.5
-	if is_dead:    fill = C_DEAD_FILL;    border = C_DEAD_BORDER;    lw = 2.0
-	elif is_special: fill = C_SPECIAL_FILL; border = C_SPECIAL_BORDER; lw = 2.0
-	elif is_key:   fill = C_KEY_FILL;     border = C_KEY_BORDER
-	else:          fill = C_LOCK_FILL;    border = C_LOCK_BORDER
+	var fill: Color
+	var border: Color
+	var lw := 1.5
+	if is_dead:
+		fill = C_DEAD_FILL
+		border = C_DEAD_BORDER
+		lw = 2.0
+	elif is_special:
+		fill = C_SPECIAL_FILL
+		border = C_SPECIAL_BORDER
+		lw = 2.0
+	elif is_key:
+		fill = C_KEY_FILL
+		border = C_KEY_BORDER
+	else:
+		fill = C_LOCK_FILL
+		border = C_LOCK_BORDER
 	var h = SQ_SIZE / 2.0
 	var r = Rect2(n.pos - Vector2(h, h), Vector2(SQ_SIZE, SQ_SIZE))
 	draw_rect(r, fill)
@@ -213,10 +262,14 @@ func _draw_lock_key_node(n: GraphData.NodeData, is_key: bool, is_lock: bool, is_
 	var icon_col = C_SPECIAL_BORDER if is_special else Color.WHITE
 	_draw_label(n.pos + Vector2(0, -5), icon, icon_col, 14)
 	var text_col: Color
-	if is_dead:      text_col = C_DEAD_TEXT
-	elif is_special: text_col = C_SPECIAL_TEXT
-	elif is_key:     text_col = C_KEY_TEXT
-	else:            text_col = C_LOCK_TEXT
+	if is_dead:
+		text_col = C_DEAD_TEXT
+	elif is_special:
+		text_col = C_SPECIAL_TEXT
+	elif is_key:
+		text_col = C_KEY_TEXT
+	else:
+		text_col = C_LOCK_TEXT
 	_draw_label(n.pos + Vector2(0, 8), n.label, text_col, 9)
 	if is_dead:
 		var m = h * 0.55
@@ -256,14 +309,18 @@ func _gui_input(event: InputEvent):
 	if event is InputEventMouseButton:
 		match event.button_index:
 			MOUSE_BUTTON_WHEEL_UP:
-				_zoom_at(event.position, 1.15); accept_event()
+				_zoom_at(event.position, 1.15)
+				accept_event()
 			MOUSE_BUTTON_WHEEL_DOWN:
-				_zoom_at(event.position, 1.0 / 1.15); accept_event()
+				_zoom_at(event.position, 1.0 / 1.15)
+				accept_event()
 			MOUSE_BUTTON_MIDDLE:
 				_panning = event.pressed
-				if event.pressed: _pan_start = event.position - pan
+				if event.pressed:
+					_pan_start = event.position - pan
 				accept_event()
 	elif event is InputEventMouseMotion:
 		if _panning:
 			pan = event.position - _pan_start
-			queue_redraw(); accept_event()
+			queue_redraw()
+			accept_event()

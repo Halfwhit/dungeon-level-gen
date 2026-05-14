@@ -14,8 +14,8 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 [application]
 
-config/name="Cyclic Graph Editor"
-config/description="Interactive cyclic graph editor with lock/key puzzle mechanics"
+config/name="Cyclic Dungeon Generator"
+config/description="Procedural dungeon connectivity generator using cyclic lock/key graphs"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"

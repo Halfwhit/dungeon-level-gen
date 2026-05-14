@@ -39,7 +39,8 @@ func _process(delta: float) -> void:
 			hint_label.text = "Computing… " + _SPINNER[int(Time.get_ticks_msec() / 150) % 4]
 			canvas.queue_redraw()
 		return
-	if not canvas.sim_running: return
+	if not canvas.sim_running:
+		return
 	var max_vel := 0.0
 	for _i in range(8):
 		max_vel = graph.simulate_step(delta, -1, sim_alpha)
@@ -51,10 +52,12 @@ func _process(delta: float) -> void:
 		canvas.queue_redraw()
 
 func _start_sim() -> void:
-	if graph.nodes.size() < 2: return
+	if graph.nodes.size() < 2:
+		return
 	sim_alpha = 1.0
 	var gs := float(graph.grid_size)
-	var s_x: float = graph.nodes[0].pos.x; var e_x: float = graph.nodes[1].pos.x
+	var s_x: float = graph.nodes[0].pos.x
+	var e_x: float = graph.nodes[1].pos.x
 	for i in range(graph.nodes.size()):
 		var n: GraphData.NodeData = graph.nodes[i]
 		n.vel = Vector2.ZERO
@@ -96,11 +99,13 @@ func _fix_cycle_positions() -> void:
 	var e_x: float = graph.nodes[1].pos.x if graph.nodes.size() > 1 else 9999.0
 	for entry in _cycles:
 		var anchor := graph.node_by_id(entry.anchor_id)
-		if anchor == null: continue
+		if anchor == null:
+			continue
 		var c0 := graph.node_by_id(entry.c_ids[0])
 		var c1 := graph.node_by_id(entry.c_ids[1])
 		var c2 := graph.node_by_id(entry.c_ids[2])
-		if c0 == null or c1 == null or c2 == null: continue
+		if c0 == null or c1 == null or c2 == null:
+			continue
 		var y_dir: float = entry.y_dir
 		c0.pos = graph.snap_vec(anchor.pos + Vector2(0.0, y_dir * 2.0 * gs))
 		# c1 to the right of c0, clamped within the S–E corridor
@@ -121,14 +126,18 @@ func _enforce_path_x_order() -> void:
 		var path: Array = _p1_ids if pi == 0 else _p2_ids
 		var above: bool = (pi == 0)
 
-		if path.size() < 2: continue
+		if path.size() < 2:
+			continue
 
 		# Step 1: push every node to the correct side of y=0.
 		for i in range(1, path.size() - 1):
 			var n := graph.node_by_id(path[i])
-			if n == null: continue
-			if above and n.pos.y > -gs:    n.pos.y = -gs
-			elif not above and n.pos.y < gs: n.pos.y = gs
+			if n == null:
+				continue
+			if above and n.pos.y > -gs:
+				n.pos.y = -gs
+			elif not above and n.pos.y < gs:
+				n.pos.y = gs
 
 		# Step 2: use the first intermediate node as the canonical y for the whole path.
 		var ref_node := graph.node_by_id(path[1])
@@ -140,7 +149,8 @@ func _enforce_path_x_order() -> void:
 			for i in range(1, path.size() - 1):
 				var n_cur := graph.node_by_id(path[i])
 				var n_prev := graph.node_by_id(path[i - 1])
-				if n_cur == null or n_prev == null: continue
+				if n_cur == null or n_prev == null:
+					continue
 
 				# x: must be at least 1 step right of predecessor
 				var min_x: float = graph.snap(n_prev.pos.x + gs)
@@ -150,29 +160,37 @@ func _enforce_path_x_order() -> void:
 
 				# y: pin to exactly ref_y so the path stays horizontal
 				if absf(n_cur.pos.y - ref_y) > 0.1:
-					n_cur.pos.y = ref_y; changed = true
+					n_cur.pos.y = ref_y
+					changed = true
 
-			if not changed: break
+			if not changed:
+				break
 
 func _reset_graph() -> void:
 	if _computing:
-		if _worker != null: _worker.wait_to_finish()
-		_worker = null; _computing = false
+		if _worker != null:
+			_worker.wait_to_finish()
+		_worker = null
+		_computing = false
 	graph.clear_graph()
 	canvas.graph = graph   # re-attach in case it was nulled during computation
 	canvas.sim_running = false
 	sim_alpha = 1.0
-	_p1_ids = []; _p2_ids = []; _cycles = []
+	_p1_ids = []
+	_p2_ids = []
+	_cycles = []
 
 func _update_stats() -> void:
 	stats_label.text = "Nodes: %d   Edges: %d" % [graph.nodes.size(), graph.edges.size()]
 	var s := graph.start_node()
 	var e := graph.end_node()
 	if s == null or e == null:
-		path_label.text = ""; return
+		path_label.text = ""
+		return
 	var tp := graph.find_two_paths(s.id, e.id)
 	if tp.is_empty():
-		path_label.bbcode_text = "[color=#C0392B]No two distinct paths from S to E[/color]"; return
+		path_label.bbcode_text = "[color=#C0392B]No two distinct paths from S to E[/color]"
+		return
 	var l1 := _path_label(tp.p1)
 	var l2 := _path_label(tp.p2)
 	var v := graph.validate_lock_key(tp)
@@ -268,11 +286,14 @@ func _generate_random_puzzle() -> void:
 func _add_path_cycle(path: Array, reserved: Array, y_dir: float) -> Array:
 	var plain: Array = []
 	for i in range(1, path.size() - 1):
-		if not reserved.has(i): plain.append(i)
-	if plain.is_empty(): return []
+		if not reserved.has(i):
+			plain.append(i)
+	if plain.is_empty():
+		return []
 
 	var anchor := graph.node_by_id(path[plain[randi() % plain.size()]])
-	if anchor == null or graph.free_sides(anchor.id).is_empty(): return []
+	if anchor == null or graph.free_sides(anchor.id).is_empty():
+		return []
 
 	var gs := float(graph.grid_size)
 	var c: Array = []

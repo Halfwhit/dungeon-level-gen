@@ -57,54 +57,71 @@ func snap(v: float) -> float:
 func snap_vec(v: Vector2) -> Vector2:
 	return Vector2(snap(v.x), snap(v.y))
 
-func is_vert_side(s: int) -> bool: return s == 0 or s == 2
+func is_vert_side(s: int) -> bool:
+	return s == 0 or s == 2
 
 # horiz=true: horizontal segment (fixed y, range over x); horiz=false: vertical (fixed x, range over y).
 func _node_on_seg(r1: float, r2: float, fixed: float, horiz: bool, skip_a: int, skip_b: int) -> bool:
-	var sf: float = snap(fixed); var lo: float = minf(r1, r2); var hi: float = maxf(r1, r2)
+	var sf: float = snap(fixed)
+	var lo: float = minf(r1, r2)
+	var hi: float = maxf(r1, r2)
 	for n in nodes:
-		if n.id == skip_a or n.id == skip_b: continue
+		if n.id == skip_a or n.id == skip_b:
+			continue
 		if horiz:
-			if snap(n.pos.y) == sf and n.pos.x > lo and n.pos.x < hi: return true
+			if snap(n.pos.y) == sf and n.pos.x > lo and n.pos.x < hi:
+				return true
 		else:
-			if snap(n.pos.x) == sf and n.pos.y > lo and n.pos.y < hi: return true
+			if snap(n.pos.x) == sf and n.pos.y > lo and n.pos.y < hi:
+				return true
 	return false
 
 # Check whether an existing routed segment overlaps this proposed segment.
 # segs layout: {snapped_coord: [[lo, hi], ...]} where coord is y for h, x for v.
 func _seg_overlaps(coord: float, a1: float, a2: float, segs: Dictionary) -> bool:
 	var sc: float = snap(coord)
-	if not segs.has(sc): return false
-	var lo: float = minf(a1, a2); var hi: float = maxf(a1, a2)
+	if not segs.has(sc):
+		return false
+	var lo: float = minf(a1, a2)
+	var hi: float = maxf(a1, a2)
 	for seg in segs[sc]:
-		if seg[0] < hi and seg[1] > lo: return true
+		if seg[0] < hi and seg[1] > lo:
+			return true
 	return false
 
 func _mark_seg(coord: float, a1: float, a2: float, segs: Dictionary) -> void:
 	var sc: float = snap(coord)
-	if not segs.has(sc): segs[sc] = []
+	if not segs.has(sc):
+		segs[sc] = []
 	segs[sc].append([snap(minf(a1, a2)), snap(maxf(a1, a2))])
 
 # Returns true if the proposed segment (fixed coord, range r1→r2) crosses any segment
 # recorded in perp_segs (the perpendicular-axis dictionary: h_edge for V→H, v_edge for H→V).
 func _seg_crosses_perp(fixed: float, r1: float, r2: float, perp_segs: Dictionary) -> bool:
-	var sf: float = snap(fixed); var lo: float = minf(r1, r2); var hi: float = maxf(r1, r2)
+	var sf: float = snap(fixed)
+	var lo: float = minf(r1, r2)
+	var hi: float = maxf(r1, r2)
 	for key in perp_segs:
-		if key <= lo or key >= hi: continue
+		if key <= lo or key >= hi:
+			continue
 		for seg in perp_segs[key]:
-			if seg[0] < sf and sf < seg[1]: return true
+			if seg[0] < sf and sf < seg[1]:
+				return true
 	return false
 
 # Returns true if the point (px, py) lies on (or touches the endpoint of) any
 # already-recorded segment. Used to keep turning-point coordinates unique.
 func _point_on_seg(px: float, py: float, h_edge: Dictionary, v_edge: Dictionary) -> bool:
-	var sx: float = snap(px); var sy: float = snap(py)
+	var sx: float = snap(px)
+	var sy: float = snap(py)
 	if h_edge.has(sy):
 		for seg in h_edge[sy]:
-			if seg[0] <= sx and sx <= seg[1]: return true
+			if seg[0] <= sx and sx <= seg[1]:
+				return true
 	if v_edge.has(sx):
 		for seg in v_edge[sx]:
-			if seg[0] <= sy and sy <= seg[1]: return true
+			if seg[0] <= sy and sy <= seg[1]:
+				return true
 	return false
 
 func node_by_id(id: int) -> NodeData:
@@ -133,7 +150,8 @@ func used_sides(node_id: int) -> Array:
 
 func free_sides(node_id: int) -> Array:
 	var used = used_sides(node_id)
-	if used.size() >= MAX_EDGES: return []
+	if used.size() >= MAX_EDGES:
+		return []
 	var free = []
 	for s in range(MAX_SIDES):
 		if not s in used:
@@ -193,13 +211,16 @@ func reassign_all_sides() -> void:
 	# direction-sensitive edge first.
 	for n in nodes:
 		var n_edges: Array = edges.filter(func(e): return e.a == n.id or e.b == n.id)
-		if n_edges.is_empty(): continue
+		if n_edges.is_empty():
+			continue
 
 		n_edges.sort_custom(func(ea, eb):
 			var oa := node_by_id(ea.b if ea.a == n.id else ea.a)
 			var ob := node_by_id(eb.b if eb.a == n.id else eb.a)
-			if oa == null: return false
-			if ob == null: return true
+			if oa == null:
+				return false
+			if ob == null:
+				return true
 			var da: Vector2 = (oa.pos - n.pos).normalized()
 			var db: Vector2 = (ob.pos - n.pos).normalized()
 			return max(abs(da.x), abs(da.y)) > max(abs(db.x), abs(db.y))
@@ -208,26 +229,34 @@ func reassign_all_sides() -> void:
 		var used: Array = []
 		for e in n_edges:
 			var other := node_by_id(e.b if e.a == n.id else e.a)
-			if other == null: continue
+			if other == null:
+				continue
 			var s := best_side_for(n, other, used)
-			if s < 0: continue
-			if e.a == n.id: e.side_a = s
-			else:           e.side_b = s
+			if s < 0:
+				continue
+			if e.a == n.id:
+				e.side_a = s
+			else:
+				e.side_b = s
 			used.append(s)
 
 # One-shot pass after layout: if an assigned side faces away from its neighbour
 # and the opposite side is free, flip it so port indicators match the actual exit direction.
 func correct_backward_sides() -> void:
 	for e in edges:
-		var na := node_by_id(e.a); var nb := node_by_id(e.b)
-		if na == null or nb == null: continue
+		var na := node_by_id(e.a)
+		var nb := node_by_id(e.b)
+		if na == null or nb == null:
+			continue
 		var ab: Vector2 = (nb.pos - na.pos).normalized()
 		if SIDE_DIRS[e.side_a].dot(ab) < -0.1:
 			var opp_a: int = (e.side_a + 2) % 4
-			if not _sides_used_except(e.a, e.id).has(opp_a): e.side_a = opp_a
+			if not _sides_used_except(e.a, e.id).has(opp_a):
+				e.side_a = opp_a
 		if SIDE_DIRS[e.side_b].dot(-ab) < -0.1:
 			var opp_b: int = (e.side_b + 2) % 4
-			if not _sides_used_except(e.b, e.id).has(opp_b): e.side_b = opp_b
+			if not _sides_used_except(e.b, e.id).has(opp_b):
+				e.side_b = opp_b
 
 func snap_all() -> void:
 	for n in nodes:
@@ -338,12 +367,16 @@ func _path_with_branch_kinds(path: Array, all_path_ids: Dictionary) -> Array:
 			var cur: int = queue.pop_front()
 			for e in edges:
 				var nb_id: int = -1
-				if e.a == cur: nb_id = e.b
-				elif e.b == cur: nb_id = e.a
-				if nb_id < 0 or visited.has(nb_id): continue
+				if e.a == cur:
+					nb_id = e.b
+				elif e.b == cur:
+					nb_id = e.a
+				if nb_id < 0 or visited.has(nb_id):
+					continue
 				visited[nb_id] = true
 				var nb = node_by_id(nb_id)
-				if nb: result.append(nb.kind)
+				if nb:
+					result.append(nb.kind)
 				queue.append(nb_id)
 	return result
 
@@ -352,8 +385,10 @@ func validate_lock_key(two_paths: Dictionary) -> Dictionary:
 		return {"valid": true, "msg": "", "keys": 0, "locks": 0, "deadlocks": 0}
 
 	var all_path_ids: Dictionary = {}
-	for id in two_paths.p1: all_path_ids[id] = true
-	for id in two_paths.p2: all_path_ids[id] = true
+	for id in two_paths.p1:
+		all_path_ids[id] = true
+	for id in two_paths.p2:
+		all_path_ids[id] = true
 	# p2 is stored E→S (travel direction), so use it directly — branch(K2) precedes L2.
 	var k1_raw = _path_with_branch_kinds(two_paths.p1, all_path_ids)
 	var k2_raw = _path_with_branch_kinds(two_paths.p2, all_path_ids)
@@ -373,14 +408,22 @@ func validate_lock_key(two_paths: Dictionary) -> Dictionary:
 	var bank = 0
 	var deficit = false
 	for i in range(max_len):
-		if i < k1.size() and k1[i] == KIND_KEY: bank += 1
-		if i < k2.size() and k2[i] == KIND_KEY: bank += 1
+		if i < k1.size() and k1[i] == KIND_KEY:
+			bank += 1
+		if i < k2.size() and k2[i] == KIND_KEY:
+			bank += 1
 		if i < k1.size() and k1[i] == KIND_LOCK:
-			if bank > 0: bank -= 1
-			else: deficit = true; break
+			if bank > 0:
+				bank -= 1
+			else:
+				deficit = true
+				break
 		if i < k2.size() and k2[i] == KIND_LOCK:
-			if bank > 0: bank -= 1
-			else: deficit = true; break
+			if bank > 0:
+				bank -= 1
+			else:
+				deficit = true
+				break
 
 	if deficit:
 		return {"valid": false, "msg": "Lock reached before enough keys collected" + dl_note, "keys": total_keys, "locks": total_locks, "deadlocks": total_deadlocks}
@@ -395,8 +438,10 @@ func route_edge(e: EdgeData, h_occ: Dictionary, v_occ: Dictionary, h_edge: Dicti
 	var nb = node_by_id(e.b)
 	if na == null or nb == null or na.id == nb.id:
 		return []
-	var ax: float = na.pos.x; var ay: float = na.pos.y
-	var bx: float = nb.pos.x; var by: float = nb.pos.y
+	var ax: float = na.pos.x
+	var ay: float = na.pos.y
+	var bx: float = nb.pos.x
+	var by: float = nb.pos.y
 	# Route directly from node centre to node centre — no stubs.
 	# _draw_polyline_clamped trims NODE_RADIUS from each end so the line
 	# always starts and ends cleanly at the node boundary regardless of
@@ -427,7 +472,8 @@ func route_edge(e: EdgeData, h_occ: Dictionary, v_occ: Dictionary, h_edge: Dicti
 				mid_y = find_free_lane(mid_y, h_edge, h_edge, float(grid_size), int(dir_y))
 				var _t := 0
 				while _t < 8 and _bv_seg.call(mid_y):
-					mid_y += float(grid_size) * dir_y; _t += 1
+					mid_y += float(grid_size) * dir_y
+					_t += 1
 			pts = [Vector2(ax, ay), Vector2(ax, mid_y), Vector2(bx, mid_y), Vector2(bx, by)]
 
 	elif not a_vert and not b_vert:
@@ -449,7 +495,8 @@ func route_edge(e: EdgeData, h_occ: Dictionary, v_occ: Dictionary, h_edge: Dicti
 				mid_x = find_free_lane(mid_x, v_edge, v_edge, float(grid_size), int(dir_x))
 				var _t := 0
 				while _t < 8 and _bh_seg.call(mid_x):
-					mid_x += float(grid_size) * dir_x; _t += 1
+					mid_x += float(grid_size) * dir_x
+					_t += 1
 			pts = [Vector2(ax, ay), Vector2(mid_x, ay), Vector2(mid_x, by), Vector2(bx, by)]
 
 	elif a_vert:
@@ -463,7 +510,8 @@ func route_edge(e: EdgeData, h_occ: Dictionary, v_occ: Dictionary, h_edge: Dicti
 			safe_y = find_free_lane(by, h_edge, h_edge, float(grid_size), int(dir_y))
 			var _t := 0
 			while _t < 8 and _av_seg.call(safe_y):
-				safe_y += float(grid_size) * dir_y; _t += 1
+				safe_y += float(grid_size) * dir_y
+				_t += 1
 		if absf(safe_y - by) < 0.1:
 			pts = [Vector2(ax, ay), Vector2(ax, by), Vector2(bx, by)]
 		else:
@@ -481,7 +529,8 @@ func route_edge(e: EdgeData, h_occ: Dictionary, v_occ: Dictionary, h_edge: Dicti
 			safe_x = find_free_lane(bx, v_edge, v_edge, float(grid_size), -int(dir_x))
 			var _t := 0
 			while _t < 8 and _ah_seg.call(safe_x):
-				safe_x -= float(grid_size) * dir_x; _t += 1
+				safe_x -= float(grid_size) * dir_x
+				_t += 1
 		if absf(safe_x - bx) < 0.1:
 			pts = [Vector2(ax, ay), Vector2(bx, ay), Vector2(bx, by)]
 		else:
@@ -507,30 +556,38 @@ func route_edge(e: EdgeData, h_occ: Dictionary, v_occ: Dictionary, h_edge: Dicti
 		var sp := Vector2(snap(p.x), snap(p.y))
 		if result.is_empty() or result[result.size() - 1].distance_to(sp) > 0.1:
 			result.append(sp)
-	if result.size() < 2: return []
+	if result.size() < 2:
+		return []
 
 	# Mark the exact segments used so later edges avoid overlapping them.
 	for i in range(result.size() - 1):
-		var p1: Vector2 = result[i]; var p2: Vector2 = result[i + 1]
-		if abs(p1.y - p2.y) < 0.1:   _mark_seg(p1.y, p1.x, p2.x, h_edge)
-		elif abs(p1.x - p2.x) < 0.1: _mark_seg(p1.x, p1.y, p2.y, v_edge)
+		var p1: Vector2 = result[i]
+		var p2: Vector2 = result[i + 1]
+		if abs(p1.y - p2.y) < 0.1:
+			_mark_seg(p1.y, p1.x, p2.x, h_edge)
+		elif abs(p1.x - p2.x) < 0.1:
+			_mark_seg(p1.x, p1.y, p2.y, v_edge)
 	return result
 
 # pref_dir: 0=bidirectional, -1=only negative offset (up/left), 1=only positive (down/right)
 func find_free_lane(base: float, occ1: Dictionary, occ2: Dictionary, min_gap: float, pref_dir: int = 0) -> float:
 	var d = min_gap
 	while d <= 2000:
-		if pref_dir >= 0 and not occ1.has(base + d) and not occ2.has(base + d): return base + d
-		if pref_dir <= 0 and not occ1.has(base - d) and not occ2.has(base - d): return base - d
+		if pref_dir >= 0 and not occ1.has(base + d) and not occ2.has(base + d):
+			return base + d
+		if pref_dir <= 0 and not occ1.has(base - d) and not occ2.has(base - d):
+			return base - d
 		d += grid_size
 	return base + (1 if pref_dir >= 0 else -1) * min_gap
 
 func build_all_paths() -> Array:
-	var h_occ = {}; var v_occ = {}
+	var h_occ = {}
+	var v_occ = {}
 	for n in nodes:
 		h_occ[snap(n.pos.y)] = true
 		v_occ[snap(n.pos.x)] = true
-	var h_edge = {}; var v_edge = {}
+	var h_edge = {}
+	var v_edge = {}
 	var result = []
 	for e in edges:
 		result.append(route_edge(e, h_occ, v_occ, h_edge, v_edge))
@@ -538,9 +595,11 @@ func build_all_paths() -> Array:
 
 # ── Intersection check ────────────────────────────────────────────────────────
 func segs_cross(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2) -> bool:
-	var d1 = p2 - p1; var d2 = p4 - p3
+	var d1 = p2 - p1
+	var d2 = p4 - p3
 	var den = d1.x*d2.y - d1.y*d2.x
-	if abs(den) < 1e-9: return false
+	if abs(den) < 1e-9:
+		return false
 	var t = ((p3.x-p1.x)*d2.y - (p3.y-p1.y)*d2.x) / den
 	var u = ((p3.x-p1.x)*d1.y - (p3.y-p1.y)*d1.x) / den
 	return t > 0.05 and t < 0.95 and u > 0.05 and u < 0.95
@@ -567,10 +626,13 @@ func add_node(pos: Vector2, label: String = "", kind: String = "") -> NodeData:
 	return n
 
 func add_edge(a: int, b: int) -> EdgeData:
-	var na = node_by_id(a); var nb = node_by_id(b)
-	if na == null or nb == null: return null
+	var na = node_by_id(a)
+	var nb = node_by_id(b)
+	if na == null or nb == null:
+		return null
 	var sides = pick_sides_for_new(na, nb)
-	if sides.is_empty(): return null
+	if sides.is_empty():
+		return null
 	var e = EdgeData.new(next_id(), a, b, sides.side_a, sides.side_b)
 	edges.append(e)
 	return e
@@ -584,14 +646,18 @@ func remove_edge(id: int) -> void:
 	edges = edges.filter(func(e): return e.id != id)
 
 func clear_graph() -> void:
-	nodes.clear(); edges.clear(); _node_map.clear(); node_counter = 0
+	nodes.clear()
+	edges.clear()
+	_node_map.clear()
+	node_counter = 0
 
 # ── Layout compaction ─────────────────────────────────────────────────────────
 # Pure proximity compaction: squeezes nodes toward the centroid one grid step
 # at a time, accepted only when every other node stays ≥ MIN_SEP apart.
 # Crossings are repaired by resolve_crossings() before and after this call.
 func compact_layout() -> void:
-	if nodes.size() < 2: return
+	if nodes.size() < 2:
+		return
 	const MIN_SEP = 1.5
 	const MAX_ITERS = 200  # safety cap
 	var min_px: float = MIN_SEP * float(grid_size)
@@ -611,15 +677,20 @@ func compact_layout() -> void:
 
 		var moved := false
 		for idx in order:
-			if idx < 2: continue  # S/E are fixed anchors
+			if idx < 2:
+				continue  # S/E are fixed anchors
 			var n: NodeData = nodes[idx]
 			var to_center: Vector2 = centroid - n.pos
-			if to_center.length() < gs * 0.5: continue
+			if to_center.length() < gs * 0.5:
+				continue
 
 			var steps: Array = []
-			if abs(to_center.x) > 1.0: steps.append(Vector2(signf(to_center.x) * gs, 0.0))
-			if abs(to_center.y) > 1.0: steps.append(Vector2(0.0, signf(to_center.y) * gs))
-			if steps.is_empty(): continue
+			if abs(to_center.x) > 1.0:
+				steps.append(Vector2(signf(to_center.x) * gs, 0.0))
+			if abs(to_center.y) > 1.0:
+				steps.append(Vector2(0.0, signf(to_center.y) * gs))
+			if steps.is_empty():
+				continue
 			steps.sort_custom(func(a: Vector2, b: Vector2) -> bool:
 				return (n.pos + a).distance_squared_to(centroid) < (n.pos + b).distance_squared_to(centroid))
 
@@ -631,18 +702,25 @@ func compact_layout() -> void:
 					continue
 				var ok := true
 				for other: NodeData in nodes:
-					if other.id == n.id: continue
-					if new_pos.distance_to(other.pos) < min_px: ok = false; break
+					if other.id == n.id:
+						continue
+					if new_pos.distance_to(other.pos) < min_px:
+						ok = false
+						break
 				if ok:
-					n.pos = new_pos; moved = true; break
+					n.pos = new_pos
+					moved = true
+					break
 
-		if not moved: break  # fully packed — nothing left to move
+		if not moved:
+			break  # fully packed — nothing left to move
 
 # After compact_layout, reposition 2-node stubs (anchor→c0→c1) so they hang straight
 # above or below their anchor regardless of where the force sim placed them.
 # y_dir is inferred from whether the anchor is above or below the node centroid.
 func fix_stub_positions() -> void:
-	if nodes.size() < 3: return
+	if nodes.size() < 3:
+		return
 	var gs := float(grid_size)
 	var centroid_y := 0.0
 	for n in nodes: centroid_y += n.pos.y
@@ -655,25 +733,36 @@ func fix_stub_positions() -> void:
 		degree[e.b] += 1
 
 	for leaf in nodes:
-		if leaf.id == nodes[0].id or leaf.id == nodes[1].id: continue
-		if degree[leaf.id] != 1: continue  # must be a dead-end (c1)
+		if leaf.id == nodes[0].id or leaf.id == nodes[1].id:
+			continue
+		if degree[leaf.id] != 1:
+			continue  # must be a dead-end (c1)
 
 		# Find c0 (leaf's only neighbour)
 		var c0: NodeData = null
 		for e in edges:
-			if e.a == leaf.id: c0 = node_by_id(e.b); break
-			if e.b == leaf.id: c0 = node_by_id(e.a); break
-		if c0 == null or degree[c0.id] != 2: continue
+			if e.a == leaf.id:
+				c0 = node_by_id(e.b)
+				break
+			if e.b == leaf.id:
+				c0 = node_by_id(e.a)
+				break
+		if c0 == null or degree[c0.id] != 2:
+			continue
 
 		# Find the anchor (c0's other neighbour, not the leaf)
 		var anchor: NodeData = null
 		for e in edges:
 			var other_id := -1
-			if e.a == c0.id: other_id = e.b
-			elif e.b == c0.id: other_id = e.a
+			if e.a == c0.id:
+				other_id = e.b
+			elif e.b == c0.id:
+				other_id = e.a
 			if other_id >= 0 and other_id != leaf.id:
-				anchor = node_by_id(other_id); break
-		if anchor == null: continue
+				anchor = node_by_id(other_id)
+				break
+		if anchor == null:
+			continue
 
 		var y_dir: float = -1.0 if anchor.pos.y < centroid_y else 1.0
 		c0.pos = snap_vec(anchor.pos + Vector2(0.0, y_dir * 2.0 * gs))
@@ -685,50 +774,74 @@ func fix_stub_positions() -> void:
 func _try_alternative_sides(e: EdgeData) -> bool:
 	var used_a: Array = _sides_used_except(e.a, e.id)
 	var used_b: Array = _sides_used_except(e.b, e.id)
-	var orig_a := e.side_a; var orig_b := e.side_b
+	var orig_a := e.side_a
+	var orig_b := e.side_b
 
-	var h_occ: Dictionary = {}; var v_occ: Dictionary = {}
+	var h_occ: Dictionary = {}
+	var v_occ: Dictionary = {}
 	for n in nodes:
-		h_occ[snap(n.pos.y)] = true; v_occ[snap(n.pos.x)] = true
-	var base_h: Dictionary = {}; var base_v: Dictionary = {}
+		h_occ[snap(n.pos.y)] = true
+		v_occ[snap(n.pos.x)] = true
+	var base_h: Dictionary = {}
+	var base_v: Dictionary = {}
 	var e_idx := -1
 	var other_paths: Array = []
 	for i in range(edges.size()):
 		var ei: EdgeData = edges[i]
 		if ei.id == e.id:
-			e_idx = i; other_paths.append([])
+			e_idx = i
+			other_paths.append([])
 		else:
 			other_paths.append(route_edge(ei, h_occ, v_occ, base_h, base_v))
 	if e_idx < 0:
-		e.side_a = orig_a; e.side_b = orig_b; return false
+		e.side_a = orig_a
+		e.side_b = orig_b
+		return false
 
 	for sa in range(4):
-		if sa in used_a: continue
+		if sa in used_a:
+			continue
 		for sb in range(4):
-			if sb in used_b: continue
-			if sa == orig_a and sb == orig_b: continue
-			e.side_a = sa; e.side_b = sb
+			if sb in used_b:
+				continue
+			if sa == orig_a and sb == orig_b:
+				continue
+			e.side_a = sa
+			e.side_b = sb
 			# Deep-copy one level: values are Arrays we append to, so inner lists must not be shared.
-			var h_copy: Dictionary = {}; for k in base_h: h_copy[k] = base_h[k].duplicate()
-			var v_copy: Dictionary = {}; for k in base_v: v_copy[k] = base_v[k].duplicate()
+			var h_copy: Dictionary = {}
+			for k in base_h:
+				h_copy[k] = base_h[k].duplicate()
+			var v_copy: Dictionary = {}
+			for k in base_v:
+				v_copy[k] = base_v[k].duplicate()
 			var e_path := route_edge(e, h_occ, v_occ, h_copy, v_copy)
-			if e_path.is_empty(): continue
+			if e_path.is_empty():
+				continue
 			var ok := true
 			for j in range(other_paths.size()):
-				if j == e_idx or other_paths[j].is_empty(): continue
-				if paths_cross(e_path, other_paths[j]): ok = false; break
-			if ok: return true
+				if j == e_idx or other_paths[j].is_empty():
+					continue
+				if paths_cross(e_path, other_paths[j]):
+					ok = false
+					break
+			if ok:
+				return true
 
-	e.side_a = orig_a; e.side_b = orig_b
+	e.side_a = orig_a
+	e.side_b = orig_b
 	return false
 
 func _sides_used_except(node_id: int, skip_edge_id: int) -> Array:
 	var used: Array = []
 	for i in range(edges.size()):
 		var e: EdgeData = edges[i]
-		if e.id == skip_edge_id: continue
-		if e.a == node_id: used.append(e.side_a)
-		if e.b == node_id: used.append(e.side_b)
+		if e.id == skip_edge_id:
+			continue
+		if e.a == node_id:
+			used.append(e.side_a)
+		if e.b == node_id:
+			used.append(e.side_b)
 	return used
 
 # Repair any crossings by searching for alternative side assignments.
@@ -738,34 +851,46 @@ func resolve_crossings() -> void:
 	const MAX_FIXES = 60
 	for _fix in range(MAX_FIXES):
 		var paths := _crossing_paths()
-		if paths.is_empty(): return
+		if paths.is_empty():
+			return
 		var fixed := false
 		for i in range(edges.size() - 1):
-			if i >= paths.size() or paths[i].is_empty(): continue
+			if i >= paths.size() or paths[i].is_empty():
+				continue
 			for j in range(i + 1, edges.size()):
-				if j >= paths.size() or paths[j].is_empty(): continue
-				var ei: EdgeData = edges[i]; var ej: EdgeData = edges[j]
-				if not paths_cross(paths[i], paths[j]): continue
+				if j >= paths.size() or paths[j].is_empty():
+					continue
+				var ei: EdgeData = edges[i]
+				var ej: EdgeData = edges[j]
+				if not paths_cross(paths[i], paths[j]):
+					continue
 				if _try_alternative_sides(ei) or _try_alternative_sides(ej):
-					fixed = true; break
-			if fixed: break
-		if not fixed: break  # no side reassignment can fix remaining crossings
+					fixed = true
+					break
+			if fixed:
+				break
+		if not fixed:
+			break  # no side reassignment can fix remaining crossings
 
 # Returns build_all_paths() result if any non-empty pair crosses, empty Array otherwise.
 # Avoids a redundant build_all_paths() call compared to a separate _any_edges_cross bool.
 func _crossing_paths() -> Array:
 	var paths := build_all_paths()
 	for i in range(paths.size() - 1):
-		if paths[i].is_empty(): continue
+		if paths[i].is_empty():
+			continue
 		for j in range(i + 1, paths.size()):
-			if paths[j].is_empty(): continue
-			if paths_cross(paths[i], paths[j]): return paths
+			if paths[j].is_empty():
+				continue
+			if paths_cross(paths[i], paths[j]):
+				return paths
 	return []
 
 # ── Force simulation ──────────────────────────────────────────────────────────
 func simulate_step(delta: float, dragging_id: int, alpha: float) -> float:
 	var n = nodes.size()
-	if n < 1: return 0.0
+	if n < 1:
+		return 0.0
 	# Cardinal edges route straight → shorter ideal. Diagonal edges need turns → longer.
 	const IDEAL_STRAIGHT = 1.5  # grid units for a perfectly cardinal edge
 	const IDEAL_TURNING  = 2.5  # grid units for a 45° diagonal edge
@@ -788,7 +913,8 @@ func simulate_step(delta: float, dragging_id: int, alpha: float) -> float:
 			var d2 = diff.length_squared()
 			var dir = diff.normalized() if d2 > 0.01 else Vector2(randf() - 0.5, randf() - 0.5).normalized()
 			var f = repel_px / max(d2, min_sep_px * min_sep_px)
-			forces[i] += dir * f; forces[j] -= dir * f
+			forces[i] += dir * f
+			forces[j] -= dir * f
 
 	# Springs + alignment
 	var node_index: Dictionary = {}
@@ -797,32 +923,40 @@ func simulate_step(delta: float, dragging_id: int, alpha: float) -> float:
 	for e in edges:
 		var si = node_index.get(e.a, -1)
 		var ti = node_index.get(e.b, -1)
-		if si < 0 or ti < 0: continue
+		if si < 0 or ti < 0:
+			continue
 		var diff = nodes[ti].pos - nodes[si].pos
 		var d: float = diff.length()
-		if d < 0.01: d = 0.01
-		var adx: float = abs(diff.x); var ady: float = abs(diff.y)
+		if d < 0.01:
+			d = 0.01
+		var adx: float = abs(diff.x)
+		var ady: float = abs(diff.y)
 		var longer: float = maxf(adx, ady)
-		if longer < 0.01: longer = 0.01
+		if longer < 0.01:
+			longer = 0.01
 		var diag: float = minf(adx, ady) / longer  # 0 = cardinal, 1 = 45°
 		var edge_ideal: float = lerp(IDEAL_STRAIGHT, IDEAL_TURNING, diag) * float(grid_size)
 		var fv = diff.normalized() * (d - edge_ideal) * SK
-		forces[si] += fv; forces[ti] -= fv
+		forces[si] += fv
+		forces[ti] -= fv
 		var a_vert = is_vert_side(e.side_a)
 		var b_vert = is_vert_side(e.side_b)
 		if a_vert and b_vert:
 			var x_err = nodes[ti].pos.x - nodes[si].pos.x
-			forces[si].x += x_err * AXIS_K; forces[ti].x -= x_err * AXIS_K
+			forces[si].x += x_err * AXIS_K
+			forces[ti].x -= x_err * AXIS_K
 		elif not a_vert and not b_vert:
 			var y_err = nodes[ti].pos.y - nodes[si].pos.y
-			forces[si].y += y_err * AXIS_K; forces[ti].y -= y_err * AXIS_K
+			forces[si].y += y_err * AXIS_K
+			forces[ti].y -= y_err * AXIS_K
 
 	var centroid = Vector2.ZERO
 	for node in nodes: centroid += node.pos
 	centroid /= float(n)
 	# Boundary springs: keep non-anchor nodes within the S–E x-corridor so the
 	# path never routes backward. Applied before velocity integration.
-	var s_x: float = nodes[0].pos.x; var e_x: float = nodes[1].pos.x
+	var s_x: float = nodes[0].pos.x
+	var e_x: float = nodes[1].pos.x
 	var max_vel = 0.0
 	for i in range(n):
 		forces[i] += (centroid - nodes[i].pos) * 0.02
@@ -832,7 +966,8 @@ func simulate_step(delta: float, dragging_id: int, alpha: float) -> float:
 				forces[i].x += (s_x + min_sep_px - xi) * 1.5
 			elif xi > e_x - min_sep_px:
 				forces[i].x -= (xi - (e_x - min_sep_px)) * 1.5
-		if nodes[i].id == dragging_id or i < 2: continue  # S/E are fixed anchors
+		if nodes[i].id == dragging_id or i < 2:
+			continue  # S/E are fixed anchors
 		nodes[i].vel = (nodes[i].vel + forces[i]) * damp
 		max_vel = max(max_vel, nodes[i].vel.length())
 		nodes[i].pos = snap_vec(nodes[i].pos + nodes[i].vel)
