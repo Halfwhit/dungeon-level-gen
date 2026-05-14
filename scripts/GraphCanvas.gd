@@ -92,9 +92,9 @@ func _draw():
 		return
 	draw_set_transform(pan, 0.0, Vector2(zoom, zoom))
 	_draw_grid()
-	if sim_running or not _paths_valid:
+	if not sim_running and not _paths_valid:
 		_compute_paths()
-		_paths_valid = not sim_running
+		_paths_valid = true
 	_draw_edges()
 	_draw_nodes()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
