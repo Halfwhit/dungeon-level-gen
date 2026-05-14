@@ -297,9 +297,10 @@ func find_two_paths(start_id: int, end_id: int) -> Dictionary:
 			adj_rem[e.a].append(e.b)
 			adj_rem[e.b].append(e.a)
 
+	# P2 is returned E→S (reversed) so that the two paths travel in opposite directions.
 	var p2 = bfs_path(func(u): return adj_rem[u], start_id, end_id)
 	if not p2.is_empty():
-		if p2[0] == end_id: p2.reverse()
+		p2.reverse()   # convert S→E result to E→S
 		return {"p1": p1, "p2": p2}
 
 	# Node-disjoint fallback
@@ -314,7 +315,7 @@ func find_two_paths(start_id: int, end_id: int) -> Dictionary:
 		adj_full[e.b].append(e.a)
 	var p2b = bfs_path(func(u): return adj_full[u].filter(func(v): return not forbidden.has(v)), start_id, end_id)
 	if not p2b.is_empty():
-		if p2b[0] == end_id: p2b.reverse()
+		p2b.reverse()   # convert S→E result to E→S
 		return {"p1": p1, "p2": p2b}
 
 	return {}
@@ -353,8 +354,10 @@ func validate_lock_key(two_paths: Dictionary) -> Dictionary:
 	var all_path_ids: Dictionary = {}
 	for id in two_paths.p1: all_path_ids[id] = true
 	for id in two_paths.p2: all_path_ids[id] = true
+	# p2 is stored E→S; reverse it for validation so K2 (on branch) precedes L2.
+	var p2_fwd: Array = two_paths.p2.duplicate(); p2_fwd.reverse()
 	var k1_raw = _path_with_branch_kinds(two_paths.p1, all_path_ids)
-	var k2_raw = _path_with_branch_kinds(two_paths.p2, all_path_ids)
+	var k2_raw = _path_with_branch_kinds(p2_fwd, all_path_ids)
 	var total_deadlocks = (k1_raw + k2_raw).filter(func(k): return k == KIND_DEADLOCK).size()
 	# Replace deadlocks with empty so they don't affect key/lock balance.
 	var k1 = k1_raw.map(func(k): return "" if k == KIND_DEADLOCK else k)

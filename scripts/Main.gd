@@ -253,7 +253,7 @@ func _generate_random_puzzle() -> void:
 	else:
 		_set_node_kind(p2[randi_range(2, p2_n - 1)], GraphData.KIND_KEY, "K2")
 
-	_puzzle_hint = "P1: branch(K1) → L1   P2: DL → branch(K2) → L2"
+	_puzzle_hint = "P1: branch(K1) → L1   P2: L2 → branch(K2) → DL"
 	hint_label.text = _puzzle_hint
 	hint_label.modulate = Color("888780")
 	_start_sim()
